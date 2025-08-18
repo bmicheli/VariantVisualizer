@@ -134,7 +134,7 @@ def apply_filters(df, search_term=None, genotype_filter=None, chromosome_filter=
     if chromosome_filter and chromosome_filter != "all":
         df = df.filter(pl.col('CHROM') == chromosome_filter)
     
-    # Genotype filter
+    # Genotype filter (gardé pour compatibilité avec les appels directs mais pas affiché dans sidebar)
     if genotype_filter and genotype_filter != "all":
         if genotype_filter == "het":
             df = df.filter(pl.col('GT').is_in(['0/1', '1/0', '0|1', '1|0']))
@@ -158,28 +158,26 @@ def apply_filters(df, search_term=None, genotype_filter=None, chromosome_filter=
             combined_search = combined_search | condition
         df = df.filter(combined_search)
     
-    # Preset filters
+    # Preset filters - NOUVEAUX FILTRES
     if active_filters:
-        if active_filters.get('rare'):
-            df = df.filter(pl.col('gnomad_af') < 0.001)
+        # High impact variants (gardé)
         if active_filters.get('high_impact'):
             high_impact = ['frameshift_variant', 'stop_gained', 'stopgain', 'stop_lost']
             df = df.filter(pl.col('consequence').is_in(high_impact))
-        if active_filters.get('reviewed'):
-            df = df.filter(pl.col('review_status') == 'Reviewed')
-        if active_filters.get('pending'):
-            df = df.filter(pl.col('review_status') == 'Pending')
-        if active_filters.get('clinvar_annotated'):
-            df = df.filter(pl.col('clinvar_sig').is_not_null())
+        
+        # Pathogenic/Likely pathogenic (gardé)
         if active_filters.get('pathogenic'):
             df = df.filter(pl.col('clinvar_sig').is_in(['Pathogenic', 'Likely pathogenic']))
-        if active_filters.get('benign'):
-            df = df.filter(pl.col('clinvar_sig').is_in(['Benign', 'Likely benign']))
-        if active_filters.get('vus'):
-            df = df.filter(pl.col('clinvar_sig').is_in(['VUS', 'Uncertain significance']))
+        
+        # NOUVEAUX FILTRES GENOTYPE
+        if active_filters.get('heterozygous'):
+            df = df.filter(pl.col('GT').is_in(['0/1', '1/0', '0|1', '1|0']))
+        
+        if active_filters.get('homozygous'):
+            # Homozygous comprend à la fois homozygous alt (1/1) et homozygous ref (0/0)
+            df = df.filter(pl.col('GT').is_in(['1/1', '1|1', '0/0', '0|0']))
     
     return df
-
 def validate_variant_data(variant_dict):
     """Validate variant data dictionary"""
     required_fields = ['CHROM', 'POS', 'REF', 'ALT', 'SAMPLE']

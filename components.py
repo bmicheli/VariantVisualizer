@@ -527,7 +527,7 @@ def create_comments_display_accordion(comments_df, variant_key, sample_id):
 	return html.Div(comment_items)
 
 def create_sidebar():
-	"""Create the advanced filters sidebar with corrected default values"""
+	"""Create the advanced filters sidebar with only Search and VAF Range"""
 	return html.Div([
 		# Sidebar header
 		html.Div([
@@ -556,28 +556,10 @@ def create_sidebar():
 				)
 			], className="mb-4"),
 			
-			# Custom Filters
+			# VAF Range Filter only
 			html.Div([
 				html.Label("⚙️ Advanced Filters", className="fw-bold mb-3"),
-				
-				html.Label("Genotype:", className="small mb-1"),
-				dcc.Dropdown(
-					id="genotype-filter",
-					options=GENOTYPE_OPTIONS,
-					value="all",
-					clearable=False,
-					className="mb-3"
-				),
-				
-				html.Label("Chromosome:", className="small mb-1"),
-				dcc.Dropdown(
-					id="chromosome-filter",
-					options=CHROMOSOME_OPTIONS,
-					value="all",
-					clearable=False,
-					className="mb-3"
-				),
-				
+				html.Br(),
 				html.Label("VAF Range:", className="small mb-1"),
 				dcc.RangeSlider(
 					id="vaf-range-slider",
@@ -587,43 +569,8 @@ def create_sidebar():
 					value=[0, 1],
 					marks={0: '0%', 0.25: '25%', 0.5: '50%', 0.75: '75%', 1: '100%'},
 					tooltip={"placement": "bottom", "always_visible": True}
-				),
-				
-				html.Label("Quality Score (min):", className="small mb-1 mt-3"),
-				dbc.Input(
-					id="quality-filter",
-					type="number",
-					placeholder="Minimum quality score",
-					min=0,
-					step=0.1,
-					className="mb-3"
-				),
-				
-				# CORRIGÉ: Valeurs par défaut plus permissives pour Population AF
-				html.Label("Population AF Range:", className="small mb-1 mt-3"),
-				dcc.RangeSlider(
-					id="pop-af-range-slider",
-					min=0,
-					max=1,  # Changé de 0.5 à 1.0 (100%)
-					step=0.001,
-					value=[0, 1],  # Changé de [0, 0.5] à [0, 1]
-					marks={
-						0: '0%', 
-						0.001: '0.1%', 
-						0.01: '1%', 
-						0.1: '10%', 
-						0.5: '50%',
-						1: '100%'  # Ajouté
-					},
-					tooltip={"placement": "bottom", "always_visible": True}
-				),
-				
-				# Note d'aide pour l'utilisateur
-				html.Small([
-					html.I(className="fas fa-info-circle me-1"),
-					"Population AF: Leave at 0-100% to include all variants. Lower values = rarer variants."
-				], className="text-muted mt-1 d-block")
-			]),
+				)
+			], className="mb-4"),
 			
 			# Clear Filters
 			dbc.Button(
@@ -635,7 +582,8 @@ def create_sidebar():
 			)
 		], className="p-3")
 	], id="filter-sidebar", className="filter-sidebar")
-
+	
+		
 def create_header():
 	"""Create the main header component - SANS LES BOUTONS"""
 	return dbc.Card([
@@ -682,7 +630,7 @@ def create_sample_selector():
 	], className="sample-selector-container mb-3")
 
 def create_main_filters_panel():
-	"""Create the main filters panel with quick filters"""
+	"""Create the main filters panel with quick filters and reset button"""
 	return dbc.Card([
 		dbc.CardBody([
 			dbc.Row([
@@ -691,7 +639,7 @@ def create_main_filters_panel():
 				], width=3),
 				dbc.Col([
 					html.Div([
-						html.Label("⚡ Quick Filters:", className="fw-bold me-3 mb-0"),
+						html.Label("Quick Filters:", className="fw-bold me-3 mb-0"),
 						html.Div([
 							dbc.Button([f["icon"], " ", f["name"]], 
 									id={"type": "preset-filter", "id": f["id"]},
@@ -699,14 +647,19 @@ def create_main_filters_panel():
 							for f in PRESET_FILTERS
 						], style={"display": "flex", "flexWrap": "wrap"})
 					])
-				], width=7),
+				], width=6),
 				dbc.Col([
-					dbc.Button("More Filters", id="more-filters-btn", color="outline-secondary", size="sm")
-				], width=2)
+					dbc.ButtonGroup([
+						dbc.Button("More Filters", id="more-filters-btn", color="outline-secondary", size="sm"),
+						dbc.Button([
+							html.I(className="fas fa-undo me-1"),
+							"Reset"
+						], id="reset-all-btn", color="outline-danger", size="sm", title="Reset all filters")
+					])
+				], width=3, className="text-end")
 			], align="center")
 		], style={"padding": "15px"})
 	], className="main-filters-panel mb-3")
-
 def create_comment_modal():
 	"""Create the comment modal component"""
 	return dbc.Modal([

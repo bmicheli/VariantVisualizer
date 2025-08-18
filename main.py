@@ -56,7 +56,7 @@ app.index_string = f'''
 '''
 
 # =============================================================================
-# APP LAYOUT - REORGANIZED
+# APP LAYOUT
 # =============================================================================
 
 app.layout = html.Div([
@@ -68,13 +68,13 @@ app.layout = html.Div([
     
     # Main container
     dbc.Container([
-        # Header (sans les boutons)
+        # Header
         create_header(),
         
-        # Sample Selector Panel (moved to top position, replacing Database Status)
+        # Sample Selector Panel
         create_sample_selector(),
         
-        # Main Filters Panel
+        # Main Filters Panel (avec bouton Reset)
         create_main_filters_panel(),
         
         # Variants Display
@@ -86,7 +86,7 @@ app.layout = html.Div([
         
     ], fluid=True, style={"padding": "20px"}),
     
-    # Modals (uniquement comment modal maintenant)
+    # Modals
     create_comment_modal(),
     
     # Data stores
@@ -99,13 +99,13 @@ app.layout = html.Div([
 ], style={"minHeight": "100vh", "background": "linear-gradient(135deg, #00BCD4 0%, #4DD0E1 50%, #80E5A3 100%)"})
 
 # =============================================================================
-# CALLBACKS - UPDATED (removed database status related callbacks)
+# CALLBACKS
 # =============================================================================
 
 # Sample options callback
 @app.callback(
     [Output("sample-selector", "options"), Output("available-samples", "data")],
-    [Input("sample-selector", "id")]  # Changed from refresh-data-btn since it's removed
+    [Input("sample-selector", "id")]
 )
 def update_sample_options(sample_selector_id):
     """Update sample selector options when app loads"""
@@ -143,16 +143,14 @@ def toggle_sidebar(toggle_clicks, close_clicks, overlay_clicks, is_open):
     overlay_class = "sidebar-overlay open" if new_state else "sidebar-overlay"
     return sidebar_class, overlay_class, new_state
 
-# Main variants display callback - UPDATED (removed refresh_clicks parameter)
+# Main variants display callback
 @app.callback(
     [Output("variants-display", "children"), Output("variant-count", "children"), Output("filtered-variants", "data")],
-    [Input("search-input", "value"), Input("genotype-filter", "value"), Input("chromosome-filter", "value"),
-     Input("active-filters", "data"), Input("sample-selector", "value"),
-     Input("quality-filter", "value"), Input("vaf-range-slider", "value"), Input("pop-af-range-slider", "value")]
+    [Input("search-input", "value"), Input("active-filters", "data"), Input("sample-selector", "value"),
+     Input("vaf-range-slider", "value")]
 )
-def update_variants_display(search_term, genotype_filter, chromosome_filter, active_filters, 
-                          selected_samples, quality_filter, vaf_range, pop_af_range):
-    """Update the variants display with optimized filtering"""
+def update_variants_display(search_term, active_filters, selected_samples, vaf_range):
+    """Update the variants display with search, preset filters, and VAF filtering"""
     
     # Early return if no samples selected
     if not selected_samples:
@@ -172,55 +170,26 @@ def update_variants_display(search_term, genotype_filter, chromosome_filter, act
         original_count = len(df)
         logger.info(f"Initial variant count: {original_count}")
         
-        # Apply additional filters efficiently
+        # Apply basic filters (search and preset filters)
         df = apply_filters(
             df, 
             search_term=search_term,
-            genotype_filter=genotype_filter,
-            chromosome_filter=chromosome_filter,
+            genotype_filter=None,
+            chromosome_filter=None,
             active_filters=active_filters,
             selected_samples=selected_samples
         )
         
         logger.info(f"After basic filters: {len(df)} variants")
         
-        # Apply advanced filters
+        # Apply VAF filter
         if isinstance(df, pd.DataFrame):
             df = pl.from_pandas(df)
         
-        # Quality filter
-        if quality_filter is not None and quality_filter > 0:
-            before_qual = len(df)
-            df = df.filter(pl.col('QUAL') >= quality_filter)
-            logger.info(f"Quality filter: {before_qual} -> {len(df)}")
-        
-        # VAF filter
         if vaf_range and len(vaf_range) == 2:
             before_vaf = len(df)
             df = df.filter((pl.col('VAF') >= vaf_range[0]) & (pl.col('VAF') <= vaf_range[1]))
             logger.info(f"VAF filter ({vaf_range}): {before_vaf} -> {len(df)}")
-        
-        # Population AF filter
-        if pop_af_range and len(pop_af_range) == 2:
-            if not (pop_af_range[0] == 0 and pop_af_range[1] >= 0.5):
-                pop_af_cols = ['af', 'gnomad_af', 'population_af']
-                pop_af_col = None
-                
-                for col in pop_af_cols:
-                    if col in df.columns:
-                        pop_af_col = col
-                        break
-                
-                if pop_af_col:
-                    before_pop_af = len(df)
-                    df = df.filter(
-                        (pl.col(pop_af_col).is_null()) |
-                        (pl.col(pop_af_col) == 0) |
-                        ((pl.col(pop_af_col) >= pop_af_range[0]) & (pl.col(pop_af_col) <= pop_af_range[1]))
-                    )
-                    logger.info(f"Pop AF filter using {pop_af_col} ({pop_af_range}): {before_pop_af} -> {len(df)}")
-                else:
-                    logger.warning("No population AF column found - filter skipped")
         
         logger.info(f"Final variant count after all filters: {len(df)}")
         
@@ -244,19 +213,32 @@ def update_variants_display(search_term, genotype_filter, chromosome_filter, act
         error_display = create_error_component(f"Error loading variants: {str(e)}")
         return error_display, create_variant_count_display(0, 0, 0), []
 
-# Clear filters callback
+# Reset all filters callback - NOUVEAU BOUTON RESET
 @app.callback(
-    [Output("genotype-filter", "value"), Output("chromosome-filter", "value"), 
-     Output("search-input", "value"), Output("active-filters", "data", allow_duplicate=True),
-     Output("quality-filter", "value"), Output("vaf-range-slider", "value"),
-     Output("pop-af-range-slider", "value")],
+    [Output("search-input", "value", allow_duplicate=True), 
+     Output("active-filters", "data", allow_duplicate=True),
+     Output("vaf-range-slider", "value", allow_duplicate=True)],
+    [Input("reset-all-btn", "n_clicks")],
+    prevent_initial_call=True
+)
+def reset_all_filters(n_clicks):
+    """Reset all filters from the main panel reset button"""
+    if n_clicks:
+        return "", {}, [0, 1]
+    return dash.no_update
+
+# Clear filters callback from sidebar
+@app.callback(
+    [Output("search-input", "value", allow_duplicate=True), 
+     Output("active-filters", "data", allow_duplicate=True),
+     Output("vaf-range-slider", "value", allow_duplicate=True)],
     [Input("clear-filters", "n_clicks")],
     prevent_initial_call=True
 )
-def clear_all_filters(n_clicks):
-    """Clear all filters with more permissive defaults"""
+def clear_all_filters_sidebar(n_clicks):
+    """Clear filters from sidebar clear button"""
     if n_clicks:
-        return "all", "all", "", {}, None, [0, 1], [0, 1.0]
+        return "", {}, [0, 1]
     return dash.no_update
 
 # Variant row expansion callback
@@ -370,11 +352,6 @@ def clear_comment_field(n_clicks, comment_value):
         return ""
     return dash.no_update
 
-# CALLBACKS SUPPRIMÉS : 
-# - Statistics modal callback (stats-btn supprimé)
-# - Export callback (export-btn supprimé)
-# Ces fonctionnalités peuvent être réimplémentées plus tard si nécessaire
-
 # Z-INDEX FIX: Clientside callback to handle sidebar/dropdown z-index conflicts
 app.clientside_callback(
     """
@@ -431,14 +408,10 @@ app.clientside_callback(
                 let isActive = false;
                 
                 if (active_filters) {
-                    if (active_filters.rare && buttonText.includes('rare')) isActive = true;
                     if (active_filters.high_impact && buttonText.includes('high impact')) isActive = true;
-                    if (active_filters.reviewed && buttonText.includes('reviewed')) isActive = true;
-                    if (active_filters.pending && buttonText.includes('pending')) isActive = true;
-                    if (active_filters.clinvar_annotated && buttonText.includes('clinvar annotated')) isActive = true;
                     if (active_filters.pathogenic && buttonText.includes('pathogenic')) isActive = true;
-                    if (active_filters.benign && buttonText.includes('benign')) isActive = true;
-                    if (active_filters.vus && buttonText.includes('vus')) isActive = true;
+                    if (active_filters.heterozygous && buttonText.includes('heterozygous')) isActive = true;
+                    if (active_filters.homozygous && buttonText.includes('homozygous')) isActive = true;
                 }
                 
                 if (isActive) {

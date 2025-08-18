@@ -69,31 +69,21 @@ STATUS_COLORS = {
 }
 
 # =============================================================================
-# FILTER PRESETS
+# FILTER PRESETS - MODIFIÉS SELON VOS SPÉCIFICATIONS
 # =============================================================================
 
 PRESET_FILTERS = [
-    {"name": "Rare variants (AF < 0.1%)", "id": "rare", "icon": "💎"},
     {"name": "High Impact variants", "id": "high_impact", "icon": "⚠️"},
-    {"name": "ClinVar annotated", "id": "clinvar_annotated", "icon": "📋"},
     {"name": "Pathogenic/Likely pathogenic", "id": "pathogenic", "icon": "🔴"},
-    {"name": "VUS", "id": "vus", "icon": "❓"},
-    {"name": "Benign/Likely benign", "id": "benign", "icon": "🟢"},
-    {"name": "Reviewed variants", "id": "reviewed", "icon": "✅"},
-    {"name": "Pending review", "id": "pending", "icon": "⏳"},
+    {"name": "Heterozygous", "id": "heterozygous", "icon": "🧬"},
+    {"name": "Homozygous", "id": "homozygous", "icon": "🔄"},
 ]
 
 # =============================================================================
-# DROPDOWN OPTIONS
+# DROPDOWN OPTIONS - MODIFIÉS (Genotype retiré pour more filters)
 # =============================================================================
 
-GENOTYPE_OPTIONS = [
-    {"label": "All", "value": "all"},
-    {"label": "Heterozygous (0/1)", "value": "het"},
-    {"label": "Homozygous Alt (1/1)", "value": "hom_alt"},
-    {"label": "Homozygous Ref (0/0)", "value": "hom_ref"}
-]
-
+# Options pour chromosome uniquement (genotype retiré)
 CHROMOSOME_OPTIONS = [{"label": "All", "value": "all"}] + [
     {"label": f"Chr {i}", "value": str(i)} for i in range(1, 23)
 ] + [
