@@ -226,12 +226,7 @@ def create_variant_details_accordion(variant):
 							html.Strong("Quality: "),
 							html.Span(f"{variant.get('QUAL', 0):.1f}" if pd.notna(variant.get('QUAL')) else "N/A")
 						], className="mb-2"),
-						
-						# Ajout du statut de review dans les détails
-						html.Div([
-							html.Strong("Review Status: "),
-							get_status_badge(variant.get('review_status', 'Pending'))
-						], className="mb-2")
+
 					])
 				], className="detail-section uniform-height")
 			], width=4),
@@ -640,8 +635,9 @@ def create_sidebar():
 			)
 		], className="p-3")
 	], id="filter-sidebar", className="filter-sidebar")
+
 def create_header():
-	"""Create the main header component"""
+	"""Create the main header component - SANS LES BOUTONS"""
 	return dbc.Card([
 		dbc.CardBody([
 			html.Div([
@@ -651,28 +647,16 @@ def create_header():
 						html.Span("Variant Visualizer", style={"color": "#0097A7"}),
 					], className="mb-0"),
 				], style={"flex": "1"}),
+				# BOUTONS SUPPRIMÉS - Section vide pour usage futur
 				html.Div([
-					dbc.ButtonGroup([
-						dbc.Button([
-							html.I(className="fas fa-sync-alt me-2"),
-							"Refresh Data"
-						], id="refresh-data-btn", color="info", outline=True, className="me-2"),
-						dbc.Button([
-							html.I(className="fas fa-download me-2"),
-							"Export"
-						], id="export-btn", color="success", outline=True),
-						dbc.Button([
-							html.I(className="fas fa-chart-bar me-2"),
-							"Stats"
-						], id="stats-btn", color="warning", outline=True, className="ms-2"),
-					])
+					# Espace réservé pour de futurs boutons si nécessaire
 				])
 			], style={"display": "flex", "alignItems": "center", "justifyContent": "space-between"})
 		])
 	], className="glass-card mb-3")
 
 def create_sample_selector():
-	"""Create the sample selector component - FIXED Z-INDEX"""
+	"""Create the sample selector component - MOVED TO TOP POSITION"""
 	return dbc.Card([
 		dbc.CardBody([
 			html.Div([
@@ -788,77 +772,10 @@ def create_success_component(message):
 		], color="success", className="border-0")
 	])
 
-def create_stats_modal():
-	"""Create statistics modal component"""
-	return dbc.Modal([
-		dbc.ModalHeader([
-			dbc.ModalTitle([
-				html.I(className="fas fa-chart-bar me-2"),
-				"Database Statistics"
-			])
-		]),
-		dbc.ModalBody([
-			html.Div(id="stats-content")
-		]),
-		dbc.ModalFooter([
-			dbc.Button("Close", id="close-stats-modal", color="secondary")
-		])
-	], id="stats-modal", is_open=False, size="xl")
-
-def create_stats_display(stats):
-	"""Create statistics display content"""
-	if not stats or stats.get('total_variants', 0) == 0:
-		return html.Div([
-			dbc.Alert("No statistics available - database is empty.", color="info")
-		])
-	
-	return html.Div([
-		dbc.Row([
-			# Overall Statistics
-			dbc.Col([
-				dbc.Card([
-					dbc.CardHeader("📊 Overall Statistics"),
-					dbc.CardBody([
-						html.P([html.Strong("Total Variants: "), f"{stats.get('total_variants', 0):,}"]),
-						html.P([html.Strong("Unique Genes: "), f"{stats.get('unique_genes', 0):,}"]),
-						html.P([html.Strong("Samples: "), f"{stats.get('samples_with_variants', 0):,}"]),
-						html.P([html.Strong("Reviewed: "), f"{stats.get('reviewed_variants', 0):,}"]),
-						html.P([html.Strong("ClinVar Annotated: "), f"{stats.get('clinvar_annotated', 0):,}"])
-					])
-				])
-			], width=6),
-			
-			# Distribution Charts would go here
-			dbc.Col([
-				dbc.Card([
-					dbc.CardHeader("🧬 Consequence Distribution"),
-					dbc.CardBody([
-						html.Div(id="consequence-chart")
-					])
-				])
-			], width=6)
-		], className="mb-3"),
-		
-		dbc.Row([
-			dbc.Col([
-				dbc.Card([
-					dbc.CardHeader("🧬 Chromosome Distribution"),
-					dbc.CardBody([
-						html.Div(id="chromosome-chart")
-					])
-				])
-			], width=6),
-			
-			dbc.Col([
-				dbc.Card([
-					dbc.CardHeader("📋 ClinVar Distribution"),
-					dbc.CardBody([
-						html.Div(id="clinvar-chart")
-					])
-				])
-			], width=6)
-		])
-	])
+# FONCTIONS SUPPRIMÉES car plus utilisées après suppression des boutons :
+# - create_stats_modal() 
+# - create_stats_display()
+# Ces fonctions peuvent être réimplémentées si nécessaire dans le futur
 
 def create_no_selection_display():
 	"""Create display for when no samples are selected"""

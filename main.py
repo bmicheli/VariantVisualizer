@@ -56,7 +56,7 @@ app.index_string = f'''
 '''
 
 # =============================================================================
-# APP LAYOUT
+# APP LAYOUT - REORGANIZED
 # =============================================================================
 
 app.layout = html.Div([
@@ -68,18 +68,10 @@ app.layout = html.Div([
     
     # Main container
     dbc.Container([
-        # Header
+        # Header (sans les boutons)
         create_header(),
         
-        # Database Status Panel
-        dbc.Card([
-            dbc.CardBody([
-                html.H6([html.I(className="fas fa-database me-2"), "Database Status"], className="mb-2 text-primary"),
-                html.Div(id="database-status-info")
-            ], style={"padding": "15px"})
-        ], className="db-status-container mb-3"),
-        
-        # Sample Selector Panel
+        # Sample Selector Panel (moved to top position, replacing Database Status)
         create_sample_selector(),
         
         # Main Filters Panel
@@ -94,52 +86,34 @@ app.layout = html.Div([
         
     ], fluid=True, style={"padding": "20px"}),
     
-    # Modals
+    # Modals (uniquement comment modal maintenant)
     create_comment_modal(),
-    create_stats_modal(),
     
     # Data stores
     dcc.Store(id="filtered-variants"),
     dcc.Store(id="selected-variant-id"),
     dcc.Store(id="active-filters", data={}),
     dcc.Store(id="sidebar-open", data=False),
-    dcc.Store(id="available-samples", data=[]),
-    
-    # Download component
-    dcc.Download(id="download-csv")
+    dcc.Store(id="available-samples", data=[])
     
 ], style={"minHeight": "100vh", "background": "linear-gradient(135deg, #00BCD4 0%, #4DD0E1 50%, #80E5A3 100%)"})
 
 # =============================================================================
-# CALLBACKS
+# CALLBACKS - UPDATED (removed database status related callbacks)
 # =============================================================================
-
-# Database status callback
-@app.callback(
-    Output("database-status-info", "children"),
-    [Input("refresh-data-btn", "n_clicks")]
-)
-def update_database_status(refresh_clicks):
-    """Update database status information"""
-    if refresh_clicks:
-        db._invalidate_cache()
-    return create_database_status_display()
 
 # Sample options callback
 @app.callback(
     [Output("sample-selector", "options"), Output("available-samples", "data")],
-    [Input("refresh-data-btn", "n_clicks")]
+    [Input("sample-selector", "id")]  # Changed from refresh-data-btn since it's removed
 )
-def update_sample_options(refresh_clicks):
-    """Update sample selector options when data is refreshed"""
-    if refresh_clicks:
-        db._invalidate_cache()
-    
+def update_sample_options(sample_selector_id):
+    """Update sample selector options when app loads"""
     samples = get_available_samples()
     options = [{"label": sample, "value": sample} for sample in samples]
     return options, samples
 
-# Sample selection callback - FIXED: Only one callback for sample-selector.value
+# Sample selection callback
 @app.callback(
     Output("sample-selector", "value"),
     [Input("clear-samples", "n_clicks")],
@@ -169,21 +143,16 @@ def toggle_sidebar(toggle_clicks, close_clicks, overlay_clicks, is_open):
     overlay_class = "sidebar-overlay open" if new_state else "sidebar-overlay"
     return sidebar_class, overlay_class, new_state
 
-# Main variants display callback
-# Main variants display callback - UPDATED pour inclure le filtre Population AF
-# Main variants display callback - CORRIGÉ pour éviter la perte de variants
+# Main variants display callback - UPDATED (removed refresh_clicks parameter)
 @app.callback(
     [Output("variants-display", "children"), Output("variant-count", "children"), Output("filtered-variants", "data")],
     [Input("search-input", "value"), Input("genotype-filter", "value"), Input("chromosome-filter", "value"),
-     Input("active-filters", "data"), Input("sample-selector", "value"), Input("refresh-data-btn", "n_clicks"),
+     Input("active-filters", "data"), Input("sample-selector", "value"),
      Input("quality-filter", "value"), Input("vaf-range-slider", "value"), Input("pop-af-range-slider", "value")]
 )
 def update_variants_display(search_term, genotype_filter, chromosome_filter, active_filters, 
-                          selected_samples, refresh_clicks, quality_filter, vaf_range, pop_af_range):
-    """Update the variants display with optimized filtering - DEBUG VERSION"""
-    
-    if refresh_clicks:
-        db._invalidate_cache()
+                          selected_samples, quality_filter, vaf_range, pop_af_range):
+    """Update the variants display with optimized filtering"""
     
     # Early return if no samples selected
     if not selected_samples:
@@ -231,11 +200,9 @@ def update_variants_display(search_term, genotype_filter, chromosome_filter, act
             df = df.filter((pl.col('VAF') >= vaf_range[0]) & (pl.col('VAF') <= vaf_range[1]))
             logger.info(f"VAF filter ({vaf_range}): {before_vaf} -> {len(df)}")
         
-        # Population AF filter - CORRECTION IMPORTANTE
+        # Population AF filter
         if pop_af_range and len(pop_af_range) == 2:
-            # Vérifier si les valeurs par défaut sont trop restrictives
             if not (pop_af_range[0] == 0 and pop_af_range[1] >= 0.5):
-                # Essayer plusieurs colonnes de fréquence possibles
                 pop_af_cols = ['af', 'gnomad_af', 'population_af']
                 pop_af_col = None
                 
@@ -246,10 +213,9 @@ def update_variants_display(search_term, genotype_filter, chromosome_filter, act
                 
                 if pop_af_col:
                     before_pop_af = len(df)
-                    # CORRECTION: Inclure les valeurs nulles ET les valeurs dans la gamme
                     df = df.filter(
                         (pl.col(pop_af_col).is_null()) |
-                        (pl.col(pop_af_col) == 0) |  # Ajouter explicitement les valeurs 0
+                        (pl.col(pop_af_col) == 0) |
                         ((pl.col(pop_af_col) >= pop_af_range[0]) & (pl.col(pop_af_col) <= pop_af_range[1]))
                     )
                     logger.info(f"Pop AF filter using {pop_af_col} ({pop_af_range}): {before_pop_af} -> {len(df)}")
@@ -261,7 +227,7 @@ def update_variants_display(search_term, genotype_filter, chromosome_filter, act
         display = create_beautiful_variant_display(df)
         count_display = create_variant_count_display(len(df), original_count, len(selected_samples))
         
-        # Convert to records for storage (limit to prevent memory issues)
+        # Convert to records for storage
         try:
             if isinstance(df, pl.DataFrame):
                 storage_data = df.head(MAX_DISPLAY_VARIANTS).to_pandas().to_dict('records')
@@ -278,7 +244,7 @@ def update_variants_display(search_term, genotype_filter, chromosome_filter, act
         error_display = create_error_component(f"Error loading variants: {str(e)}")
         return error_display, create_variant_count_display(0, 0, 0), []
 
-# Clear filters callback - CORRIGÉ avec des valeurs par défaut plus permissives
+# Clear filters callback
 @app.callback(
     [Output("genotype-filter", "value"), Output("chromosome-filter", "value"), 
      Output("search-input", "value"), Output("active-filters", "data", allow_duplicate=True),
@@ -290,8 +256,7 @@ def update_variants_display(search_term, genotype_filter, chromosome_filter, act
 def clear_all_filters(n_clicks):
     """Clear all filters with more permissive defaults"""
     if n_clicks:
-        # CORRECTION: Mettre des valeurs plus permissives par défaut
-        return "all", "all", "", {}, None, [0, 1], [0, 1.0]  # Pop AF jusqu'à 100% au lieu de 50%
+        return "all", "all", "", {}, None, [0, 1], [0, 1.0]
     return dash.no_update
 
 # Variant row expansion callback
@@ -330,20 +295,6 @@ def handle_preset_filters(n_clicks_list, current_filters):
         new_filters[filter_id] = True
     
     return new_filters
-
-# # Clear filters callback
-# @app.callback(
-#     [Output("genotype-filter", "value"), Output("chromosome-filter", "value"), 
-#      Output("search-input", "value"), Output("active-filters", "data", allow_duplicate=True),
-#      Output("quality-filter", "value"), Output("vaf-range-slider", "value")],
-#     [Input("clear-filters", "n_clicks")],
-#     prevent_initial_call=True
-# )
-# def clear_all_filters(n_clicks):
-#     """Clear all filters"""
-#     if n_clicks:
-#         return "all", "all", "", {}, None, [0, 1]
-#     return dash.no_update
 
 # Comment modal callback
 @app.callback(
@@ -400,7 +351,6 @@ def handle_comment_modal(comment_clicks, add_comment_clicks, close_clicks, add_c
         if success:
             return False, "", "", None
         else:
-            # Keep modal open on error
             return True, dash.no_update, dash.no_update, selected_variant_id
 
     if trigger_id == "close-modal":
@@ -420,63 +370,10 @@ def clear_comment_field(n_clicks, comment_value):
         return ""
     return dash.no_update
 
-# Statistics modal callback
-@app.callback(
-    [Output("stats-modal", "is_open"), Output("stats-content", "children")],
-    [Input("stats-btn", "n_clicks"), Input("close-stats-modal", "n_clicks")],
-    [State("stats-modal", "is_open"), State("filtered-variants", "data")]
-)
-def handle_stats_modal(stats_clicks, close_clicks, is_open, filtered_data):
-    """Handle statistics modal"""
-    ctx = callback_context
-    if not ctx.triggered:
-        return False, dash.no_update
-    
-    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
-    
-    if trigger_id == "stats-btn" and stats_clicks:
-        # Create statistics from filtered data
-        if filtered_data:
-            df = pd.DataFrame(filtered_data)
-            stats = create_summary_stats(df)
-        else:
-            stats = db.get_database_stats()
-        
-        stats_display = create_stats_display(stats)
-        return True, stats_display
-    
-    if trigger_id == "close-stats-modal":
-        return False, dash.no_update
-    
-    return is_open, dash.no_update
-
-# Export callback
-@app.callback(
-    Output("download-csv", "data"),
-    [Input("export-btn", "n_clicks")],
-    [State("filtered-variants", "data")],
-    prevent_initial_call=True
-)
-def export_variants(n_clicks, filtered_data):
-    """Export filtered variants to CSV"""
-    if n_clicks and filtered_data:
-        df = pd.DataFrame(filtered_data)
-        export_columns = [
-            'CHROM', 'POS', 'REF', 'ALT', 'SAMPLE', 'GT', 'VAF', 'gene', 
-            'consequence', 'clinvar_sig', 'clinvar_id', 'clinvar_disease',
-            'gnomad_af', 'cadd_score', 'review_status'
-        ]
-        available_columns = [col for col in export_columns if col in df.columns]
-        export_df = df[available_columns].copy()
-        
-        filename = f"variants_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        
-        return dcc.send_data_frame(
-            export_df.to_csv, 
-            filename, 
-            index=False
-        )
-    return dash.no_update
+# CALLBACKS SUPPRIMÉS : 
+# - Statistics modal callback (stats-btn supprimé)
+# - Export callback (export-btn supprimé)
+# Ces fonctionnalités peuvent être réimplémentées plus tard si nécessaire
 
 # Z-INDEX FIX: Clientside callback to handle sidebar/dropdown z-index conflicts
 app.clientside_callback(
@@ -567,30 +464,6 @@ app.clientside_callback(
     [Input("active-filters", "data")]
 )
 
-# Error handling callback
-@app.callback(
-    Output("variants-display", "children", allow_duplicate=True),
-    [Input("refresh-data-btn", "n_clicks")],
-    prevent_initial_call=True
-)
-def handle_refresh_errors(n_clicks):
-    """Handle errors during data refresh"""
-    if n_clicks:
-        try:
-            # Test database connection
-            stats = db.get_database_stats()
-            if stats['total_variants'] == 0:
-                return create_error_component(
-                    "No variants found in database. Please check your data files."
-                )
-        except Exception as e:
-            logger.error(f"Database error during refresh: {e}")
-            return create_error_component(
-                f"Database connection error: {str(e)}"
-            )
-    
-    return dash.no_update
-
 # Real-time search callback (with debouncing)
 @app.callback(
     Output("search-input", "valid"),
@@ -602,35 +475,6 @@ def validate_search_input(search_value):
     if search_value and len(search_value) < 2:
         return False
     return True
-
-# Performance monitoring callback
-@app.callback(
-    Output("database-status-info", "children", allow_duplicate=True),
-    [Input("variants-display", "children")],
-    prevent_initial_call=True
-)
-def monitor_performance(variants_display):
-    """Monitor app performance and update status"""
-    try:
-        # Get current stats
-        stats = db.get_database_stats()
-        
-        # Add performance info
-        if hasattr(db, '_last_query_time'):
-            performance_info = html.Div([
-                create_database_status_display(),
-                html.Small(
-                    f"Last query: {db._last_query_time:.2f}s", 
-                    className="text-muted mt-1"
-                )
-            ])
-            return performance_info
-        
-        return create_database_status_display()
-        
-    except Exception as e:
-        logger.error(f"Performance monitoring error: {e}")
-        return create_database_status_display()
 
 # =============================================================================
 # APP STARTUP AND RUN
