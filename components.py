@@ -83,6 +83,10 @@ def create_beautiful_variant_display(df):
 		variant_text = f"{variant['REF']}>{variant['ALT']}"
 		vaf_display = format_percentage(variant.get('VAF', 0))
 		
+		# Get population frequency (try multiple columns)
+		pop_af = variant.get('af', variant.get('gnomad_af', variant.get('population_af', 0)))
+		pop_af_display = format_frequency(pop_af)
+		
 		# Create data row
 		data_row = html.Tr([
 			# Sample ID
@@ -101,8 +105,21 @@ def create_beautiful_variant_display(df):
 			html.Td([get_consequence_badge(variant.get('consequence', 'variant'))]),
 			# ClinVar Classification
 			html.Td([get_clinvar_badge(variant.get('clinvar_sig'))]),
-			# Review Status
-			html.Td([get_status_badge(variant.get('review_status', 'Pending'))]),
+			# Population Frequency (nouvelle colonne)
+			html.Td([
+				html.Span(pop_af_display, 
+					style={
+						"fontFamily": "monospace", 
+						"fontSize": "10px", 
+						"fontWeight": "bold",
+						"color": "#dc3545" if pop_af and pop_af < 0.001 
+							else "#ffc107" if pop_af and 0.001 <= pop_af < 0.01 
+							else "#28a745" if pop_af and pop_af >= 0.01 
+							else "#6c757d"
+					},
+					title=f"Population Allele Frequency: {pop_af_display}"
+				)
+			], style={"textAlign": "right"}),
 			# Comments
 			html.Td([
 				dbc.Button([html.I(className="fas fa-comments me-1"), str(variant.get('comment_count', 0))], 
@@ -153,7 +170,7 @@ def create_beautiful_variant_display(df):
 					html.Th("VAF", className="sortable-header"),
 					html.Th("Consequence", className="sortable-header"),
 					html.Th("ClinVar", className="sortable-header"),
-					html.Th("Review", className="sortable-header"),
+					html.Th("Pop. AF", className="sortable-header", title="Population Allele Frequency"),
 					html.Th("Comments", className="sortable-header"),
 				])
 			]),
@@ -208,6 +225,12 @@ def create_variant_details_accordion(variant):
 						html.Div([
 							html.Strong("Quality: "),
 							html.Span(f"{variant.get('QUAL', 0):.1f}" if pd.notna(variant.get('QUAL')) else "N/A")
+						], className="mb-2"),
+						
+						# Ajout du statut de review dans les détails
+						html.Div([
+							html.Strong("Review Status: "),
+							get_status_badge(variant.get('review_status', 'Pending'))
 						], className="mb-2")
 					])
 				], className="detail-section uniform-height")
@@ -509,7 +532,7 @@ def create_comments_display_accordion(comments_df, variant_key, sample_id):
 	return html.Div(comment_items)
 
 def create_sidebar():
-	"""Create the advanced filters sidebar"""
+	"""Create the advanced filters sidebar with corrected default values"""
 	return html.Div([
 		# Sidebar header
 		html.Div([
@@ -579,7 +602,32 @@ def create_sidebar():
 					min=0,
 					step=0.1,
 					className="mb-3"
-				)
+				),
+				
+				# CORRIGÉ: Valeurs par défaut plus permissives pour Population AF
+				html.Label("Population AF Range:", className="small mb-1 mt-3"),
+				dcc.RangeSlider(
+					id="pop-af-range-slider",
+					min=0,
+					max=1,  # Changé de 0.5 à 1.0 (100%)
+					step=0.001,
+					value=[0, 1],  # Changé de [0, 0.5] à [0, 1]
+					marks={
+						0: '0%', 
+						0.001: '0.1%', 
+						0.01: '1%', 
+						0.1: '10%', 
+						0.5: '50%',
+						1: '100%'  # Ajouté
+					},
+					tooltip={"placement": "bottom", "always_visible": True}
+				),
+				
+				# Note d'aide pour l'utilisateur
+				html.Small([
+					html.I(className="fas fa-info-circle me-1"),
+					"Population AF: Leave at 0-100% to include all variants. Lower values = rarer variants."
+				], className="text-muted mt-1 d-block")
 			]),
 			
 			# Clear Filters
@@ -592,7 +640,6 @@ def create_sidebar():
 			)
 		], className="p-3")
 	], id="filter-sidebar", className="filter-sidebar")
-
 def create_header():
 	"""Create the main header component"""
 	return dbc.Card([

@@ -58,16 +58,50 @@ def get_genotype_badge(genotype):
         return html.Span(gt_str, className="genotype-badge gt-missing")
 
 def format_frequency(frequency):
-    """Format allele frequency for display"""
-    if pd.isna(frequency) or frequency == 0:
+    """Format allele frequency for display with improved precision"""
+    if pd.isna(frequency) or frequency == 0 or frequency is None:
         return "N/A"
     
-    if frequency < 0.0001:
-        return f"{frequency:.2e}"
-    elif frequency < 0.01:
-        return f"{frequency:.4f}"
-    else:
-        return f"{frequency:.3f}"
+    try:
+        freq_val = float(frequency)
+        
+        if freq_val == 0:
+            return "0"
+        elif freq_val < 0.00001:  # < 0.001%
+            return f"{freq_val:.2e}"
+        elif freq_val < 0.0001:   # < 0.01%
+            return f"{freq_val:.1e}"
+        elif freq_val < 0.001:    # < 0.1%
+            return f"{freq_val:.5f}"
+        elif freq_val < 0.01:     # < 1%
+            return f"{freq_val:.4f}"
+        elif freq_val < 0.1:      # < 10%
+            return f"{freq_val:.3f}"
+        else:                     # >= 10%
+            return f"{freq_val:.2f}"
+            
+    except (ValueError, TypeError):
+        return "N/A"
+
+def get_frequency_color_style(frequency):
+    """Get color styling based on frequency value for population AF display"""
+    if pd.isna(frequency) or frequency == 0 or frequency is None:
+        return {"color": "#6c757d"}  # Gray for N/A
+    
+    try:
+        freq_val = float(frequency)
+        
+        if freq_val < 0.001:      # < 0.1% - Very rare (red)
+            return {"color": "#dc3545", "fontWeight": "bold"}
+        elif freq_val < 0.01:     # 0.1% - 1% - Rare (orange)
+            return {"color": "#fd7e14", "fontWeight": "bold"}
+        elif freq_val < 0.05:     # 1% - 5% - Uncommon (yellow)
+            return {"color": "#ffc107", "fontWeight": "bold"}
+        else:                     # >= 5% - Common (green)
+            return {"color": "#28a745", "fontWeight": "bold"}
+            
+    except (ValueError, TypeError):
+        return {"color": "#6c757d"}
 
 def format_percentage(value):
     """Format value as percentage"""

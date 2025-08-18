@@ -170,15 +170,17 @@ def toggle_sidebar(toggle_clicks, close_clicks, overlay_clicks, is_open):
     return sidebar_class, overlay_class, new_state
 
 # Main variants display callback
+# Main variants display callback - UPDATED pour inclure le filtre Population AF
+# Main variants display callback - CORRIGÉ pour éviter la perte de variants
 @app.callback(
     [Output("variants-display", "children"), Output("variant-count", "children"), Output("filtered-variants", "data")],
     [Input("search-input", "value"), Input("genotype-filter", "value"), Input("chromosome-filter", "value"),
      Input("active-filters", "data"), Input("sample-selector", "value"), Input("refresh-data-btn", "n_clicks"),
-     Input("quality-filter", "value"), Input("vaf-range-slider", "value")]
+     Input("quality-filter", "value"), Input("vaf-range-slider", "value"), Input("pop-af-range-slider", "value")]
 )
 def update_variants_display(search_term, genotype_filter, chromosome_filter, active_filters, 
-                          selected_samples, refresh_clicks, quality_filter, vaf_range):
-    """Update the variants display with optimized filtering"""
+                          selected_samples, refresh_clicks, quality_filter, vaf_range, pop_af_range):
+    """Update the variants display with optimized filtering - DEBUG VERSION"""
     
     if refresh_clicks:
         db._invalidate_cache()
@@ -199,6 +201,7 @@ def update_variants_display(search_term, genotype_filter, chromosome_filter, act
             return empty_display, empty_count, []
         
         original_count = len(df)
+        logger.info(f"Initial variant count: {original_count}")
         
         # Apply additional filters efficiently
         df = apply_filters(
@@ -210,15 +213,50 @@ def update_variants_display(search_term, genotype_filter, chromosome_filter, act
             selected_samples=selected_samples
         )
         
+        logger.info(f"After basic filters: {len(df)} variants")
+        
         # Apply advanced filters
         if isinstance(df, pd.DataFrame):
             df = pl.from_pandas(df)
         
+        # Quality filter
         if quality_filter is not None and quality_filter > 0:
+            before_qual = len(df)
             df = df.filter(pl.col('QUAL') >= quality_filter)
+            logger.info(f"Quality filter: {before_qual} -> {len(df)}")
         
+        # VAF filter
         if vaf_range and len(vaf_range) == 2:
+            before_vaf = len(df)
             df = df.filter((pl.col('VAF') >= vaf_range[0]) & (pl.col('VAF') <= vaf_range[1]))
+            logger.info(f"VAF filter ({vaf_range}): {before_vaf} -> {len(df)}")
+        
+        # Population AF filter - CORRECTION IMPORTANTE
+        if pop_af_range and len(pop_af_range) == 2:
+            # Vérifier si les valeurs par défaut sont trop restrictives
+            if not (pop_af_range[0] == 0 and pop_af_range[1] >= 0.5):
+                # Essayer plusieurs colonnes de fréquence possibles
+                pop_af_cols = ['af', 'gnomad_af', 'population_af']
+                pop_af_col = None
+                
+                for col in pop_af_cols:
+                    if col in df.columns:
+                        pop_af_col = col
+                        break
+                
+                if pop_af_col:
+                    before_pop_af = len(df)
+                    # CORRECTION: Inclure les valeurs nulles ET les valeurs dans la gamme
+                    df = df.filter(
+                        (pl.col(pop_af_col).is_null()) |
+                        (pl.col(pop_af_col) == 0) |  # Ajouter explicitement les valeurs 0
+                        ((pl.col(pop_af_col) >= pop_af_range[0]) & (pl.col(pop_af_col) <= pop_af_range[1]))
+                    )
+                    logger.info(f"Pop AF filter using {pop_af_col} ({pop_af_range}): {before_pop_af} -> {len(df)}")
+                else:
+                    logger.warning("No population AF column found - filter skipped")
+        
+        logger.info(f"Final variant count after all filters: {len(df)}")
         
         display = create_beautiful_variant_display(df)
         count_display = create_variant_count_display(len(df), original_count, len(selected_samples))
@@ -239,6 +277,22 @@ def update_variants_display(search_term, genotype_filter, chromosome_filter, act
         logger.error(f"Error in update_variants_display: {e}")
         error_display = create_error_component(f"Error loading variants: {str(e)}")
         return error_display, create_variant_count_display(0, 0, 0), []
+
+# Clear filters callback - CORRIGÉ avec des valeurs par défaut plus permissives
+@app.callback(
+    [Output("genotype-filter", "value"), Output("chromosome-filter", "value"), 
+     Output("search-input", "value"), Output("active-filters", "data", allow_duplicate=True),
+     Output("quality-filter", "value"), Output("vaf-range-slider", "value"),
+     Output("pop-af-range-slider", "value")],
+    [Input("clear-filters", "n_clicks")],
+    prevent_initial_call=True
+)
+def clear_all_filters(n_clicks):
+    """Clear all filters with more permissive defaults"""
+    if n_clicks:
+        # CORRECTION: Mettre des valeurs plus permissives par défaut
+        return "all", "all", "", {}, None, [0, 1], [0, 1.0]  # Pop AF jusqu'à 100% au lieu de 50%
+    return dash.no_update
 
 # Variant row expansion callback
 @app.callback(
@@ -277,19 +331,19 @@ def handle_preset_filters(n_clicks_list, current_filters):
     
     return new_filters
 
-# Clear filters callback
-@app.callback(
-    [Output("genotype-filter", "value"), Output("chromosome-filter", "value"), 
-     Output("search-input", "value"), Output("active-filters", "data", allow_duplicate=True),
-     Output("quality-filter", "value"), Output("vaf-range-slider", "value")],
-    [Input("clear-filters", "n_clicks")],
-    prevent_initial_call=True
-)
-def clear_all_filters(n_clicks):
-    """Clear all filters"""
-    if n_clicks:
-        return "all", "all", "", {}, None, [0, 1]
-    return dash.no_update
+# # Clear filters callback
+# @app.callback(
+#     [Output("genotype-filter", "value"), Output("chromosome-filter", "value"), 
+#      Output("search-input", "value"), Output("active-filters", "data", allow_duplicate=True),
+#      Output("quality-filter", "value"), Output("vaf-range-slider", "value")],
+#     [Input("clear-filters", "n_clicks")],
+#     prevent_initial_call=True
+# )
+# def clear_all_filters(n_clicks):
+#     """Clear all filters"""
+#     if n_clicks:
+#         return "all", "all", "", {}, None, [0, 1]
+#     return dash.no_update
 
 # Comment modal callback
 @app.callback(
