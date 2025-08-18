@@ -147,41 +147,97 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.2) !important;
 }
 
+/* SIDEBAR Z-INDEX FIXES */
 .filter-sidebar {
-    position: fixed;
-    top: 0;
-    left: -400px;
-    width: 380px;
-    height: 100vh;
-    background: rgba(255, 255, 255, 0.98);
-    backdrop-filter: blur(15px);
-    box-shadow: 2px 0 20px rgba(0, 0, 0, 0.15);
-    transition: left 0.3s ease;
-    z-index: 1000;
-    overflow-y: auto;
-    border-radius: 0 15px 15px 0;
+    position: fixed !important;
+    top: 0 !important;
+    left: -400px !important;
+    width: 380px !important;
+    height: 100vh !important;
+    background: rgba(255, 255, 255, 0.98) !important;
+    backdrop-filter: blur(15px) !important;
+    box-shadow: 2px 0 20px rgba(0, 0, 0, 0.15) !important;
+    transition: left 0.3s ease !important;
+    z-index: 99999 !important;
+    overflow-y: auto !important;
+    border-radius: 0 15px 15px 0 !important;
 }
 
 .filter-sidebar.open {
-    left: 0;
+    left: 0 !important;
+    z-index: 99999 !important;
 }
 
 .sidebar-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.5);
-    opacity: 0;
-    visibility: hidden;
-    transition: all 0.3s ease;
-    z-index: 999;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    background: rgba(0, 0, 0, 0.5) !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    transition: all 0.3s ease !important;
+    z-index: 99998 !important;
 }
 
 .sidebar-overlay.open {
-    opacity: 1;
-    visibility: visible;
+    opacity: 1 !important;
+    visibility: visible !important;
+    z-index: 99998 !important;
+}
+
+/* DROPDOWN Z-INDEX FIXES */
+.sample-selector-container {
+    position: relative !important;
+    z-index: 1000 !important;
+}
+
+.sample-selector-container .Select-menu-outer,
+.sample-selector-container .Select-menu,
+.sample-selector-container .Select-option {
+    z-index: 1001 !important;
+}
+
+/* Dash specific dropdown fixes */
+.dash-dropdown {
+    z-index: 1001 !important;
+}
+
+.dash-dropdown .Select-menu-outer {
+    z-index: 1002 !important;
+}
+
+.dash-dropdown .Select-menu {
+    z-index: 1003 !important;
+}
+
+.dash-dropdown .Select-option {
+    z-index: 1004 !important;
+}
+
+/* React-Select fixes */
+.css-26l3qy-menu,
+.css-1pahdxg-control,
+.css-1hwfws3 {
+    z-index: 1005 !important;
+}
+
+div[class*="-menu"] {
+    z-index: 1005 !important;
+}
+
+div[class*="-MenuList"] {
+    z-index: 1006 !important;
+}
+
+div[class*="-option"] {
+    z-index: 1007 !important;
+}
+
+/* Main content should be lower */
+.main-filters-panel {
+    z-index: 100 !important;
 }
 
 .variants-table-container {
@@ -189,6 +245,7 @@ body {
     overflow-x: auto;
     border-radius: 12px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    z-index: 50 !important;
 }
 
 .variants-table {
@@ -288,6 +345,24 @@ body {
     margin-bottom: 15px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     border-left: 4px solid #00BCD4;
+}
+
+/* Uniform height fix for the six boxes */
+.uniform-height {
+    min-height: 180px !important;
+    display: flex;
+    flex-direction: column;
+}
+
+.uniform-height .text-primary {
+    flex-shrink: 0;
+}
+
+.uniform-height > div:last-child {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
 }
 
 .comment-item {
