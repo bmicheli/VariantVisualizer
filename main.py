@@ -139,26 +139,16 @@ def update_sample_options(refresh_clicks):
     options = [{"label": sample, "value": sample} for sample in samples]
     return options, samples
 
-# Show all samples callback
+# Sample selection callback - FIXED: Only one callback for sample-selector.value
 @app.callback(
     Output("sample-selector", "value"),
-    [Input("show-all-samples", "n_clicks"), Input("clear-samples", "n_clicks")],
-    [State("available-samples", "data")],
+    [Input("clear-samples", "n_clicks")],
     prevent_initial_call=True
 )
-def handle_sample_selection(show_all_clicks, clear_clicks, available_samples):
-    """Handle sample selection buttons"""
-    ctx = callback_context
-    if not ctx.triggered:
-        return dash.no_update
-    
-    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-    
-    if button_id == "show-all-samples" and show_all_clicks and available_samples:
-        return available_samples
-    elif button_id == "clear-samples" and clear_clicks:
+def handle_clear_samples(clear_clicks):
+    """Handle clear samples button"""
+    if clear_clicks:
         return []
-    
     return dash.no_update
 
 # Sidebar toggle callback
@@ -434,6 +424,51 @@ def export_variants(n_clicks, filtered_data):
         )
     return dash.no_update
 
+# Z-INDEX FIX: Clientside callback to handle sidebar/dropdown z-index conflicts
+app.clientside_callback(
+    """
+    function(sidebar_open) {
+        setTimeout(() => {
+            const sampleContainer = document.querySelector('.sample-selector-container');
+            const dropdowns = document.querySelectorAll('.dash-dropdown, .Select, div[class*="menu"], div[class*="MenuList"]');
+            const sidebar = document.querySelector('.filter-sidebar');
+            const overlay = document.querySelector('.sidebar-overlay');
+            
+            if (sidebar_open) {
+                // Sidebar is open - lower all dropdown z-indexes
+                if (sampleContainer) {
+                    sampleContainer.style.zIndex = '100';
+                }
+                dropdowns.forEach(dropdown => {
+                    dropdown.style.zIndex = '100';
+                });
+                
+                // Ensure sidebar and overlay are on top
+                if (sidebar) {
+                    sidebar.style.zIndex = '99999';
+                }
+                if (overlay) {
+                    overlay.style.zIndex = '99998';
+                }
+            } else {
+                // Sidebar is closed - restore normal dropdown z-indexes
+                if (sampleContainer) {
+                    sampleContainer.style.zIndex = '1000';
+                }
+                dropdowns.forEach(dropdown => {
+                    dropdown.style.zIndex = '1005';
+                });
+            }
+        }, 50);
+        
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("sidebar-open", "data", allow_duplicate=True),
+    [Input("sidebar-open", "data")],
+    prevent_initial_call=True
+)
+
 # Clientside callback for filter buttons styling
 app.clientside_callback(
     """
@@ -567,5 +602,4 @@ def run_app():
         print(f"❌ Error starting app: {e}")
 
 if __name__ == "__main__":
-	app.run(debug=True)
-
+    app.run(debug=True)
