@@ -1,6 +1,7 @@
 """
 Configuration file for Variant Visualizer
 Contains all constants, paths, and configuration settings
+OPTIMIZED VERSION with performance improvements
 """
 
 import os
@@ -21,6 +22,24 @@ SAMPLE_INDEX_PATH = os.path.join(DATA_DIR, 'sample_index.parquet')
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# PERFORMANCE CONFIGURATION - OPTIMISATIONS PRINCIPALES
+# =============================================================================
+
+# OPTIMISATION MAJEURE: Maximum variants to display for performance
+# CHANGÉ DE 1000 À 20 pour un rendu ultra-rapide
+MAX_DISPLAY_VARIANTS = 10
+
+# OPTIMISATION: Maximum variants to load at once  
+# RÉDUIT de 50000 à 1000 pour améliorer la réactivité
+MAX_LOAD_LIMIT = 1000
+
+# Default chunk size for processing
+DEFAULT_CHUNK_SIZE = 10000
+
+# Cache settings - AMÉLIORÉ
+CACHE_TIMEOUT = 600      # Augmenté à 10 minutes
 
 # =============================================================================
 # UI CONFIGURATION
@@ -69,7 +88,7 @@ STATUS_COLORS = {
 }
 
 # =============================================================================
-# FILTER PRESETS - MODIFIÉS SELON VOS SPÉCIFICATIONS
+# FILTER PRESETS
 # =============================================================================
 
 PRESET_FILTERS = [
@@ -80,32 +99,15 @@ PRESET_FILTERS = [
 ]
 
 # =============================================================================
-# DROPDOWN OPTIONS - MODIFIÉS (Genotype retiré pour more filters)
+# DROPDOWN OPTIONS
 # =============================================================================
 
-# Options pour chromosome uniquement (genotype retiré)
 CHROMOSOME_OPTIONS = [{"label": "All", "value": "all"}] + [
     {"label": f"Chr {i}", "value": str(i)} for i in range(1, 23)
 ] + [
     {"label": "Chr X", "value": "X"},
     {"label": "Chr Y", "value": "Y"}
 ]
-
-# =============================================================================
-# DATABASE SETTINGS
-# =============================================================================
-
-# Default chunk size for processing
-DEFAULT_CHUNK_SIZE = 10000
-
-# Maximum variants to display for performance
-MAX_DISPLAY_VARIANTS = 1000
-
-# Maximum variants to load at once
-MAX_LOAD_LIMIT = 50000
-
-# Cache settings
-CACHE_TIMEOUT = 300  # 5 minutes
 
 # =============================================================================
 # EXTERNAL STYLESHEETS
@@ -117,7 +119,7 @@ EXTERNAL_STYLESHEETS = [
 ]
 
 # =============================================================================
-# CSS STYLES
+# CSS STYLES - AVEC OPTIMISATIONS DE PERFORMANCE
 # =============================================================================
 
 CUSTOM_CSS = '''
@@ -189,7 +191,6 @@ body {
     z-index: 1001 !important;
 }
 
-/* Dash specific dropdown fixes */
 .dash-dropdown {
     z-index: 1001 !important;
 }
@@ -206,7 +207,6 @@ body {
     z-index: 1004 !important;
 }
 
-/* React-Select fixes */
 .css-26l3qy-menu,
 .css-1pahdxg-control,
 .css-1hwfws3 {
@@ -230,12 +230,14 @@ div[class*="-option"] {
     z-index: 100 !important;
 }
 
+/* OPTIMISATIONS DE PERFORMANCE POUR LES VARIANTS */
 .variants-table-container {
     width: 100%;
     overflow-x: auto;
     border-radius: 12px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     z-index: 50 !important;
+    contain: layout style;
 }
 
 .variants-table {
@@ -243,6 +245,7 @@ div[class*="-option"] {
     min-width: 1400px;
     border-collapse: collapse;
     background: white;
+    table-layout: fixed;
 }
 
 .variants-table th {
@@ -277,10 +280,12 @@ div[class*="-option"] {
 
 .variant-row {
     cursor: pointer;
+    will-change: background-color;
 }
 
 .variant-row:hover {
     background: rgba(0, 188, 212, 0.05) !important;
+    transform: translateZ(0);
 }
 
 .main-filters-panel {
@@ -321,6 +326,8 @@ div[class*="-option"] {
     font-size: 0.8em;
     padding: 2px 6px;
     border-radius: 8px;
+    will-change: auto;
+    backface-visibility: hidden;
 }
 
 .gt-het { background: #fff3cd; color: #856404; }
@@ -337,7 +344,6 @@ div[class*="-option"] {
     border-left: 4px solid #00BCD4;
 }
 
-/* Uniform height fix for the six boxes */
 .uniform-height {
     min-height: 180px !important;
     display: flex;
@@ -353,6 +359,10 @@ div[class*="-option"] {
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
+}
+
+.variant-details-content {
+    contain: layout style;
 }
 
 .comment-item {
@@ -387,5 +397,19 @@ div[class*="-option"] {
     border-radius: 8px;
     padding: 15px;
     margin: 10px 0;
+}
+
+.alert-warning {
+    border-left: 4px solid #f39c12;
+    font-size: 0.9em;
+}
+
+.alert-warning .fas {
+    color: #f39c12;
+}
+
+.badge {
+    will-change: auto;
+    backface-visibility: hidden;
 }
 '''

@@ -1,6 +1,7 @@
 """
 Main application file for Variant Visualizer
 Contains the Dash app initialization, layout, and all callbacks
+OPTIMIZED VERSION with performance improvements
 """
 
 import dash
@@ -74,7 +75,7 @@ app.layout = html.Div([
         # Sample Selector Panel
         create_sample_selector(),
         
-        # Main Filters Panel (avec bouton Reset)
+        # Main Filters Panel (with reset button)
         create_main_filters_panel(),
         
         # Variants Display
@@ -143,14 +144,15 @@ def toggle_sidebar(toggle_clicks, close_clicks, overlay_clicks, is_open):
     overlay_class = "sidebar-overlay open" if new_state else "sidebar-overlay"
     return sidebar_class, overlay_class, new_state
 
-# Main variants display callback
+# OPTIMIZED: Main variants display callback
 @app.callback(
     [Output("variants-display", "children"), Output("variant-count", "children"), Output("filtered-variants", "data")],
     [Input("search-input", "value"), Input("active-filters", "data"), Input("sample-selector", "value"),
-     Input("vaf-range-slider", "value")]
+     Input("vaf-range-slider", "value")],
+    prevent_initial_call=False
 )
-def update_variants_display(search_term, active_filters, selected_samples, vaf_range):
-    """Update the variants display with search, preset filters, and VAF filtering"""
+def update_variants_display_optimized(search_term, active_filters, selected_samples, vaf_range):
+    """Optimized variants display with performance improvements"""
     
     # Early return if no samples selected
     if not selected_samples:
@@ -159,7 +161,7 @@ def update_variants_display(search_term, active_filters, selected_samples, vaf_r
         return no_selection, count_display, []
     
     try:
-        # Load variants with basic sample filtering at the database level
+        # OPTIMISATION: Load with strict limit
         df = db.load_variants_lazy(samples=selected_samples, limit=MAX_LOAD_LIMIT)
         
         if is_dataframe_empty(df):
@@ -170,7 +172,7 @@ def update_variants_display(search_term, active_filters, selected_samples, vaf_r
         original_count = len(df)
         logger.info(f"Initial variant count: {original_count}")
         
-        # Apply basic filters (search and preset filters)
+        # Apply basic filters
         df = apply_filters(
             df, 
             search_term=search_term,
@@ -196,7 +198,7 @@ def update_variants_display(search_term, active_filters, selected_samples, vaf_r
         display = create_beautiful_variant_display(df)
         count_display = create_variant_count_display(len(df), original_count, len(selected_samples))
         
-        # Convert to records for storage
+        # OPTIMISATION: Store only first MAX_DISPLAY_VARIANTS for details
         try:
             if isinstance(df, pl.DataFrame):
                 storage_data = df.head(MAX_DISPLAY_VARIANTS).to_pandas().to_dict('records')
@@ -213,7 +215,36 @@ def update_variants_display(search_term, active_filters, selected_samples, vaf_r
         error_display = create_error_component(f"Error loading variants: {str(e)}")
         return error_display, create_variant_count_display(0, 0, 0), []
 
-# Reset all filters callback - NOUVEAU BOUTON RESET
+# NEW: Lazy loading callback for variant details
+@app.callback(
+    Output({"type": "variant-details-lazy", "variant": MATCH, "sample": MATCH}, "children"),
+    [Input({"type": "variant-collapse", "variant": MATCH, "sample": MATCH}, "is_open")],
+    [State("filtered-variants", "data")],
+    prevent_initial_call=True
+)
+def load_variant_details_lazy(is_open, filtered_variants):
+    """Lazy load variant details only when accordion is opened"""
+    if not is_open or not filtered_variants:
+        return html.Div()
+    
+    ctx = callback_context
+    if not ctx.triggered:
+        return html.Div()
+    
+    # Extract variant and sample from triggered component
+    trigger_id = json.loads(ctx.triggered[0]['prop_id'].split('.')[0])
+    variant_key = trigger_id.get('variant')
+    sample_id = trigger_id.get('sample')
+    
+    # Find the variant in filtered data
+    for variant_dict in filtered_variants:
+        if (variant_dict.get('variant_key') == variant_key and 
+            variant_dict.get('SAMPLE') == sample_id):
+            return create_variant_details_accordion(pd.Series(variant_dict))
+    
+    return html.Div([html.P("Variant details not found.")])
+
+# Reset all filters callback - MAIN PANEL RESET BUTTON
 @app.callback(
     [Output("search-input", "value", allow_duplicate=True), 
      Output("active-filters", "data", allow_duplicate=True),

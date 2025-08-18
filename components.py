@@ -1,6 +1,7 @@
 """
 UI Components for Variant Visualizer
 Contains all display components and layout functions
+OPTIMIZED VERSION with performance improvements
 """
 
 import dash_bootstrap_components as dbc
@@ -37,12 +38,14 @@ def create_database_status_display():
 	])
 
 def create_beautiful_variant_display(df):
-	"""Create optimized variant table display"""
+	"""Create optimized variant table display with performance improvements"""
 	# Check DataFrame length properly for both Polars and Pandas
 	if isinstance(df, pl.DataFrame):
 		is_empty = len(df) == 0
+		total_count = len(df)
 	else:
 		is_empty = df.empty
+		total_count = len(df)
 	
 	if is_empty:
 		return html.Div([
@@ -69,55 +72,70 @@ def create_beautiful_variant_display(df):
 	else:
 		df_pandas = df
 	
-	# Limit display for performance (show first 1000 rows)
+	# OPTIMISATION MAJEURE: Limiter strictement à MAX_DISPLAY_VARIANTS
 	display_df = df_pandas.head(MAX_DISPLAY_VARIANTS)
+	showing_count = len(display_df)
 	
-	# Create table rows efficiently
-	table_rows = []
-	
+	# Pre-calculate all data to avoid repeated calculations
+	variant_data = []
 	for idx, variant in display_df.iterrows():
 		variant_key = variant.get('variant_key', f"{variant['CHROM']}:{variant['POS']}:{variant['REF']}:{variant['ALT']}")
 		
-		# Format data
+		# Pre-format all data
 		position = f"{variant['CHROM']}:{variant['POS']:}"
 		variant_text = f"{variant['REF']}>{variant['ALT']}"
 		vaf_display = format_percentage(variant.get('VAF', 0))
-		
-		# Get population frequency (try multiple columns)
 		pop_af = variant.get('af', variant.get('gnomad_af', variant.get('population_af', 0)))
 		pop_af_display = format_frequency(pop_af)
 		
-		# Create data row
+		variant_data.append({
+			'variant_key': variant_key,
+			'position': position,
+			'variant_text': variant_text,
+			'vaf_display': vaf_display,
+			'pop_af_display': pop_af_display,
+			'pop_af': pop_af,
+			'variant': variant
+		})
+	
+	# Create table rows with optimized rendering
+	table_rows = []
+	
+	for data in variant_data:
+		variant = data['variant']
+		variant_key = data['variant_key']
+		
+		# Create simplified data row with minimal DOM elements
 		data_row = html.Tr([
 			# Sample ID
 			html.Td(variant['SAMPLE'], style={"fontSize": "11px", "fontWeight": "500"}),
 			# Position
-			html.Td(position, style={"fontFamily": "monospace", "fontSize": "11px"}),
+			html.Td(data['position'], style={"fontFamily": "monospace", "fontSize": "11px"}),
 			# Gene
 			html.Td(variant.get('gene', 'UNKNOWN'), style={"fontWeight": "bold", "color": "#0097A7", "fontSize": "12px"}),
 			# Variant
-			html.Td(variant_text, style={"fontFamily": "monospace", "fontSize": "11px", "backgroundColor": "#f8f9fa", "borderRadius": "4px", "textAlign": "center"}),
-			# Genotype
-			html.Td([get_genotype_badge(variant.get('GT', './.'))]),
+			html.Td(data['variant_text'], style={"fontFamily": "monospace", "fontSize": "11px", "backgroundColor": "#f8f9fa", "borderRadius": "4px", "textAlign": "center"}),
+			# Genotype - Optimized
+			html.Td([get_genotype_badge_optimized(variant.get('GT', './.'))]),
 			# VAF
-			html.Td(vaf_display, style={"fontFamily": "monospace", "fontSize": "10px", "textAlign": "right"}),
-			# Consequence
-			html.Td([get_consequence_badge(variant.get('consequence', 'variant'))]),
-			# ClinVar Classification
-			html.Td([get_clinvar_badge(variant.get('clinvar_sig'))]),
-			# Population Frequency (nouvelle colonne)
+			html.Td(data['vaf_display'], style={"fontFamily": "monospace", "fontSize": "10px", "textAlign": "right"}),
+			# Consequence - Optimized
+			html.Td([get_consequence_badge_optimized(variant.get('consequence', 'variant'))]),
+			# ClinVar Classification - Optimized
+			html.Td([get_clinvar_badge_optimized(variant.get('clinvar_sig'))]),
+			# Population Frequency
 			html.Td([
-				html.Span(pop_af_display, 
+				html.Span(data['pop_af_display'], 
 					style={
 						"fontFamily": "monospace", 
 						"fontSize": "10px", 
 						"fontWeight": "bold",
-						"color": "#dc3545" if pop_af and pop_af < 0.001 
-							else "#ffc107" if pop_af and 0.001 <= pop_af < 0.01 
-							else "#28a745" if pop_af and pop_af >= 0.01 
+						"color": "#dc3545" if data['pop_af'] and data['pop_af'] < 0.001 
+							else "#ffc107" if data['pop_af'] and 0.001 <= data['pop_af'] < 0.01 
+							else "#28a745" if data['pop_af'] and data['pop_af'] >= 0.01 
 							else "#6c757d"
 					},
-					title=f"Population Allele Frequency: {pop_af_display}"
+					title=f"Population Allele Frequency: {data['pop_af_display']}"
 				)
 			], style={"textAlign": "right"}),
 			# Comments
@@ -128,13 +146,11 @@ def create_beautiful_variant_display(df):
 			], style={"textAlign": "center"}),
 		], className="variant-row", id={"type": "variant-row", "variant": variant_key, "sample": variant['SAMPLE']}, n_clicks=0)
 		
-		# Accordion collapse row for detailed view
+		# Accordion collapse row - LAZY LOADING
 		accordion_row = html.Tr([
 			html.Td([
 				dbc.Collapse([
-					html.Div([
-						create_variant_details_accordion(variant)
-					], className="variant-details-content")
+					html.Div(id={"type": "variant-details-lazy", "variant": variant_key, "sample": variant['SAMPLE']})
 				], 
 				id={"type": "variant-collapse", "variant": variant_key, "sample": variant['SAMPLE']},
 				is_open=False)
@@ -143,22 +159,20 @@ def create_beautiful_variant_display(df):
 		
 		table_rows.extend([data_row, accordion_row])
 	
-	# Add notice if showing limited results
-	total_count = len(df_pandas)
-	showing_count = len(display_df)
-	
-	display_info = []
-	if total_count > showing_count:
-		display_info = [
+	# Performance notice
+	performance_notice = []
+	if total_count > MAX_DISPLAY_VARIANTS:
+		performance_notice = [
 			dbc.Alert([
-				html.I(className="fas fa-info-circle me-2"),
-				f"Showing first {showing_count:,} of {total_count:,} variants. Use filters to narrow results."
-			], color="info", className="mb-3")
+				html.I(className="fas fa-bolt me-2"),
+				f"Performance mode: Showing first {showing_count} of {total_count:,} variants. ",
+				html.B("Use filters to narrow results for better performance.", style={"color": "#0066cc"})
+			], color="warning", className="mb-3", style={"fontSize": "0.9em"})
 		]
 	
-	# Create table with headers
+	# Create table with minimal overhead
 	return html.Div([
-		*display_info,
+		*performance_notice,
 		html.Table([
 			html.Thead([
 				html.Tr([
@@ -585,7 +599,7 @@ def create_sidebar():
 	
 		
 def create_header():
-	"""Create the main header component - SANS LES BOUTONS"""
+	"""Create the main header component"""
 	return dbc.Card([
 		dbc.CardBody([
 			html.Div([
@@ -595,16 +609,15 @@ def create_header():
 						html.Span("Variant Visualizer", style={"color": "#0097A7"}),
 					], className="mb-0"),
 				], style={"flex": "1"}),
-				# BOUTONS SUPPRIMÉS - Section vide pour usage futur
 				html.Div([
-					# Espace réservé pour de futurs boutons si nécessaire
+					# Space for future buttons if needed
 				])
 			], style={"display": "flex", "alignItems": "center", "justifyContent": "space-between"})
 		])
 	], className="glass-card mb-3")
 
 def create_sample_selector():
-	"""Create the sample selector component - MOVED TO TOP POSITION"""
+	"""Create the sample selector component"""
 	return dbc.Card([
 		dbc.CardBody([
 			html.Div([
@@ -660,6 +673,7 @@ def create_main_filters_panel():
 			], align="center")
 		], style={"padding": "15px"})
 	], className="main-filters-panel mb-3")
+
 def create_comment_modal():
 	"""Create the comment modal component"""
 	return dbc.Modal([
@@ -724,11 +738,6 @@ def create_success_component(message):
 			], className="text-center")
 		], color="success", className="border-0")
 	])
-
-# FONCTIONS SUPPRIMÉES car plus utilisées après suppression des boutons :
-# - create_stats_modal() 
-# - create_stats_display()
-# Ces fonctions peuvent être réimplémentées si nécessaire dans le futur
 
 def create_no_selection_display():
 	"""Create display for when no samples are selected"""

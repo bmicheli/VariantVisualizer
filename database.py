@@ -1,6 +1,7 @@
 """
 Database operations for Variant Visualizer
 Handles Parquet file operations, caching, and data management
+OPTIMIZED VERSION with performance improvements
 """
 
 import polars as pl
@@ -55,10 +56,13 @@ class OptimizedParquetDB:
         self.get_available_samples.cache_clear()
     
     def load_variants_lazy(self, samples=None, chromosomes=None, limit=None):
-        """Lazy load variants with optional filtering"""
+        """Optimized lazy load variants with aggressive filtering"""
         try:
             if not os.path.exists(VARIANTS_PARQUET_PATH):
                 return pl.DataFrame()
+            
+            # OPTIMISATION: Use more aggressive effective limit
+            effective_limit = min(limit or MAX_LOAD_LIMIT, MAX_LOAD_LIMIT)
             
             # Build filter conditions
             filters = []
@@ -68,41 +72,46 @@ class OptimizedParquetDB:
                 chrom_list = [str(c).replace('chr', '') for c in chromosomes]
                 filters.append(pl.col('CHROM').is_in(chrom_list))
             
-            # Read with lazy evaluation
+            # Read with lazy evaluation and early limiting
             lazy_df = pl.scan_parquet(VARIANTS_PARQUET_PATH)
             
+            # Apply most selective filters first
             if filters:
                 for f in filters:
                     lazy_df = lazy_df.filter(f)
             
-            if limit:
-                lazy_df = lazy_df.limit(limit)
+            # OPTIMISATION: Apply limit very early
+            lazy_df = lazy_df.limit(effective_limit)
             
             # Collect results
             df = lazy_df.collect()
             
-            # Add comment counts efficiently
-            if os.path.exists(COMMENTS_PARQUET_PATH):
-                try:
-                    comments_df = pl.read_parquet(COMMENTS_PARQUET_PATH)
-                    if len(comments_df) > 0:
-                        comment_counts = (
-                            comments_df
-                            .group_by(['variant_key', 'sample_id'])
-                            .agg(pl.len().alias('comment_count'))
-                        )
-                        df = df.join(
-                            comment_counts, 
-                            left_on=['variant_key', 'SAMPLE'], 
-                            right_on=['variant_key', 'sample_id'],
-                            how='left'
-                        ).with_columns(
-                            pl.col('comment_count').fill_null(0)
-                        )
-                except Exception as e:
-                    logger.warning(f"Could not load comment counts: {e}")
+            # OPTIMISATION: Conditional comment loading only if necessary
+            if len(df) <= MAX_DISPLAY_VARIANTS:
+                if os.path.exists(COMMENTS_PARQUET_PATH):
+                    try:
+                        comments_df = pl.read_parquet(COMMENTS_PARQUET_PATH)
+                        if len(comments_df) > 0:
+                            comment_counts = (
+                                comments_df
+                                .group_by(['variant_key', 'sample_id'])
+                                .agg(pl.len().alias('comment_count'))
+                            )
+                            df = df.join(
+                                comment_counts, 
+                                left_on=['variant_key', 'SAMPLE'], 
+                                right_on=['variant_key', 'sample_id'],
+                                how='left'
+                            ).with_columns(
+                                pl.col('comment_count').fill_null(0)
+                            )
+                    except Exception as e:
+                        logger.warning(f"Could not load comment counts: {e}")
+                        df = df.with_columns(pl.lit(0).alias('comment_count'))
+                else:
                     df = df.with_columns(pl.lit(0).alias('comment_count'))
             else:
+                # If too many variants, don't load comments for now
                 df = df.with_columns(pl.lit(0).alias('comment_count'))
             
             return df

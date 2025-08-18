@@ -1,6 +1,7 @@
 """
 Utility functions for Variant Visualizer
 Contains badge creation, filtering, and data processing functions
+OPTIMIZED VERSION with performance improvements
 """
 
 import dash_bootstrap_components as dbc
@@ -56,6 +57,40 @@ def get_genotype_badge(genotype):
         return html.Span("1/1", className="genotype-badge gt-hom-alt", title="Homozygous Alternate")
     else:
         return html.Span(gt_str, className="genotype-badge gt-missing")
+
+# OPTIMIZED VERSIONS FOR PERFORMANCE
+def get_genotype_badge_optimized(genotype):
+    """Optimized genotype badge with minimal DOM operations"""
+    if pd.isna(genotype) or genotype in [None, './.', '.', '']:
+        return html.Span("./.", className="genotype-badge gt-missing")
+
+    gt_str = str(genotype).replace('|', '/')
+    
+    # Use dictionary to avoid multiple if statements
+    gt_classes = {
+        '0/0': "genotype-badge gt-hom-ref",
+        '0/1': "genotype-badge gt-het", 
+        '1/0': "genotype-badge gt-het",
+        '1/1': "genotype-badge gt-hom-alt"
+    }
+    
+    return html.Span(gt_str, className=gt_classes.get(gt_str, "genotype-badge gt-missing"))
+
+def get_consequence_badge_optimized(consequence):
+    """Optimized consequence badge"""
+    if not consequence or pd.isna(consequence):
+        consequence = 'variant'
+    
+    color = CONSEQUENCE_COLORS.get(consequence, 'secondary')
+    return dbc.Badge(consequence, color=color, className="me-1", style={"fontSize": "0.7em"})
+
+def get_clinvar_badge_optimized(classification):
+    """Optimized ClinVar badge"""
+    if not classification or pd.isna(classification):
+        return dbc.Badge("No annotation", color="light", text_color="dark", style={"fontSize": "0.7em"})
+    
+    color = CLINVAR_COLORS.get(classification, 'secondary')
+    return dbc.Badge(classification, color=color, style={"fontSize": "0.7em"})
 
 def format_frequency(frequency):
     """Format allele frequency for display with improved precision"""
@@ -134,7 +169,7 @@ def apply_filters(df, search_term=None, genotype_filter=None, chromosome_filter=
     if chromosome_filter and chromosome_filter != "all":
         df = df.filter(pl.col('CHROM') == chromosome_filter)
     
-    # Genotype filter (gardé pour compatibilité avec les appels directs mais pas affiché dans sidebar)
+    # Genotype filter
     if genotype_filter and genotype_filter != "all":
         if genotype_filter == "het":
             df = df.filter(pl.col('GT').is_in(['0/1', '1/0', '0|1', '1|0']))
@@ -158,26 +193,27 @@ def apply_filters(df, search_term=None, genotype_filter=None, chromosome_filter=
             combined_search = combined_search | condition
         df = df.filter(combined_search)
     
-    # Preset filters - NOUVEAUX FILTRES
+    # Preset filters
     if active_filters:
-        # High impact variants (gardé)
+        # High impact variants
         if active_filters.get('high_impact'):
             high_impact = ['frameshift_variant', 'stop_gained', 'stopgain', 'stop_lost']
             df = df.filter(pl.col('consequence').is_in(high_impact))
         
-        # Pathogenic/Likely pathogenic (gardé)
+        # Pathogenic/Likely pathogenic
         if active_filters.get('pathogenic'):
             df = df.filter(pl.col('clinvar_sig').is_in(['Pathogenic', 'Likely pathogenic']))
         
-        # NOUVEAUX FILTRES GENOTYPE
+        # Heterozygous
         if active_filters.get('heterozygous'):
             df = df.filter(pl.col('GT').is_in(['0/1', '1/0', '0|1', '1|0']))
         
+        # Homozygous (both alt and ref)
         if active_filters.get('homozygous'):
-            # Homozygous comprend à la fois homozygous alt (1/1) et homozygous ref (0/0)
             df = df.filter(pl.col('GT').is_in(['1/1', '1|1', '0/0', '0|0']))
     
     return df
+
 def validate_variant_data(variant_dict):
     """Validate variant data dictionary"""
     required_fields = ['CHROM', 'POS', 'REF', 'ALT', 'SAMPLE']
