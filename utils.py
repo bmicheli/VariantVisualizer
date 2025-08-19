@@ -1,7 +1,6 @@
 """
 Utility functions for Variant Visualizer
 Contains badge creation, filtering, and data processing functions
-OPTIMIZED VERSION with performance improvements
 """
 
 import dash_bootstrap_components as dbc
