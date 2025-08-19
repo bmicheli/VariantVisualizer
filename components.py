@@ -2,6 +2,7 @@
 UI Components for Variant Visualizer
 Contains all display components and layout functions
 OPTIMIZED VERSION with performance improvements
+UPDATED WITH GENE NAME LINKS TO OMIM
 """
 
 import dash_bootstrap_components as dbc
@@ -38,7 +39,7 @@ def create_database_status_display():
 	])
 
 def create_beautiful_variant_display(df):
-	"""Create optimized variant table display with performance improvements"""
+	"""Create optimized variant table display with performance improvements and gene links"""
 	# Check DataFrame length properly for both Polars and Pandas
 	if isinstance(df, pl.DataFrame):
 		is_empty = len(df) == 0
@@ -111,8 +112,8 @@ def create_beautiful_variant_display(df):
 			html.Td(variant['SAMPLE'], style={"fontSize": "11px", "fontWeight": "500"}),
 			# Position
 			html.Td(data['position'], style={"fontFamily": "monospace", "fontSize": "11px"}),
-			# Gene
-			html.Td(variant.get('gene', 'UNKNOWN'), style={"fontWeight": "bold", "color": "#0097A7", "fontSize": "12px"}),
+			# Gene - UPDATED TO USE GENE LINK
+			html.Td(create_gene_link(variant.get('gene', 'UNKNOWN'))),
 			# Variant
 			html.Td(data['variant_text'], style={"fontFamily": "monospace", "fontSize": "11px", "backgroundColor": "#f8f9fa", "borderRadius": "4px", "textAlign": "center"}),
 			# Genotype - Optimized
@@ -193,7 +194,7 @@ def create_beautiful_variant_display(df):
 	], className="variants-table-container")
 
 def create_variant_details_accordion(variant):
-	"""Create detailed information panel for accordion expansion"""
+	"""Create detailed information panel for accordion expansion with gene links"""
 	
 	variant_key = variant.get('variant_key', f"{variant['CHROM']}:{variant['POS']}:{variant['REF']}:{variant['ALT']}")
 	sample_id = variant['SAMPLE']
@@ -298,7 +299,7 @@ def create_variant_details_accordion(variant):
 						
 						html.Div([
 							html.Strong("Gene: "),
-							html.Span(variant.get('gene', 'UNKNOWN'))
+							create_gene_link(variant.get('gene', 'UNKNOWN'))
 						], className="mb-2"),
 						
 						html.Div([

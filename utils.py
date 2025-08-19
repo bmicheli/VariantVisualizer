@@ -1,13 +1,77 @@
 """
 Utility functions for Variant Visualizer
 Contains badge creation, filtering, and data processing functions
+UPDATED WITH GENE NAME MAPPING AND OMIM LINKS
 """
 
 import dash_bootstrap_components as dbc
 import polars as pl
 import pandas as pd
 from dash import html
+import os
 from config import *
+
+# Global variable to store gene mapping
+_gene_mapping = None
+
+def load_gene_mapping():
+    """Load HGNC ID to gene name mapping from file"""
+    global _gene_mapping
+    
+    if _gene_mapping is not None:
+        return _gene_mapping
+    
+    gene_mapping_file = os.path.join(DATA_DIR, 'symbol.tsv')
+    
+    try:
+        if os.path.exists(gene_mapping_file):
+            # Load the mapping file
+            mapping_df = pd.read_csv(gene_mapping_file, sep='\t')
+            # Create dictionary mapping HGNC_ID to HGNC_symbol
+            _gene_mapping = dict(zip(mapping_df['HGNC_ID'].astype(str), mapping_df['HGNC_symbol']))
+            logger.info(f"Loaded {len(_gene_mapping)} gene mappings from {gene_mapping_file}")
+        else:
+            logger.warning(f"Gene mapping file not found: {gene_mapping_file}")
+            _gene_mapping = {}
+    except Exception as e:
+        logger.error(f"Error loading gene mapping: {e}")
+        _gene_mapping = {}
+    
+    return _gene_mapping
+
+def get_gene_name_from_id(gene_id):
+    """Convert HGNC ID to gene name"""
+    if pd.isna(gene_id) or gene_id in [None, '', 'UNKNOWN']:
+        return 'UNKNOWN'
+    
+    gene_mapping = load_gene_mapping()
+    gene_id_str = str(gene_id)
+    
+    # Return gene name if found in mapping, otherwise return original ID
+    return gene_mapping.get(gene_id_str, gene_id_str)
+
+def create_gene_link(gene_id_or_name):
+    """Create clickable gene name with OMIM link"""
+    gene_name = get_gene_name_from_id(gene_id_or_name)
+    
+    if gene_name == 'UNKNOWN' or not gene_name:
+        return html.Span("UNKNOWN", style={"color": "#6c757d", "fontStyle": "italic"})
+    
+    # Create OMIM search URL
+    omim_url = f"https://www.omim.org/search?index=entry&search={gene_name}"
+    
+    return html.A(
+        gene_name,
+        href=omim_url,
+        target="_blank",
+        style={
+            "fontWeight": "bold", 
+            "color": "#0097A7", 
+            "textDecoration": "none",
+            "fontSize": "12px"
+        },
+        title=f"View {gene_name} in OMIM database"
+    )
 
 def is_dataframe_empty(df):
     """Check if DataFrame is empty (works for both Polars and Pandas)"""
@@ -177,15 +241,30 @@ def apply_filters(df, search_term=None, genotype_filter=None, chromosome_filter=
         elif genotype_filter == "hom_ref":
             df = df.filter(pl.col('GT').is_in(['0/0', '0|0']))
     
-    # Search filter
+    # Search filter - UPDATED to search both gene IDs and gene names
     if search_term:
         search_lower = search_term.lower()
+        
+        # Load gene mapping for searching
+        gene_mapping = load_gene_mapping()
+        
+        # Find gene IDs that match the search term (when searching by gene name)
+        matching_gene_ids = []
+        for gene_id, gene_name in gene_mapping.items():
+            if search_lower in gene_name.lower():
+                matching_gene_ids.append(gene_id)
+        
         search_conditions = [
-            pl.col('gene').str.to_lowercase().str.contains(search_lower),
+            pl.col('gene').str.to_lowercase().str.contains(search_lower),  # Search by gene ID
             pl.col('consequence').str.to_lowercase().str.contains(search_lower),
             pl.col('SAMPLE').str.to_lowercase().str.contains(search_lower),
             pl.col('CHROM').str.to_lowercase().str.contains(search_lower)
         ]
+        
+        # Add condition to search by gene name (via matching IDs)
+        if matching_gene_ids:
+            search_conditions.append(pl.col('gene').is_in(matching_gene_ids))
+        
         # Combine search conditions with OR
         combined_search = search_conditions[0]
         for condition in search_conditions[1:]:
