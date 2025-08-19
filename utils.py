@@ -1,7 +1,7 @@
 """
 Utility functions for Variant Visualizer
 Contains badge creation, filtering, and data processing functions
-UPDATED WITH GENE NAME MAPPING AND OMIM LINKS
+UPDATED WITH GENE NAME MAPPING AND OMIM LINKS - HANDLES MULTIPLE GENES
 """
 
 import dash_bootstrap_components as dbc
@@ -42,7 +42,7 @@ def load_gene_mapping():
 def get_gene_name_from_id(gene_id):
     """Convert HGNC ID to gene name"""
     if pd.isna(gene_id) or gene_id in [None, '', 'UNKNOWN']:
-        return 'UNKNOWN'
+        return gene_id if gene_id else 'UNKNOWN'
     
     gene_mapping = load_gene_mapping()
     gene_id_str = str(gene_id)
@@ -51,27 +51,90 @@ def get_gene_name_from_id(gene_id):
     return gene_mapping.get(gene_id_str, gene_id_str)
 
 def create_gene_link(gene_id_or_name):
-    """Create clickable gene name with OMIM link"""
-    gene_name = get_gene_name_from_id(gene_id_or_name)
+    """Create clickable gene name(s) with OMIM links - handles multiple genes with deduplication"""
     
-    if gene_name == 'UNKNOWN' or not gene_name:
+    if pd.isna(gene_id_or_name) or gene_id_or_name in [None, '', 'UNKNOWN']:
         return html.Span("UNKNOWN", style={"color": "#6c757d", "fontStyle": "italic"})
     
-    # Create OMIM search URL
-    omim_url = f"https://www.omim.org/search?index=entry&search={gene_name}"
+    gene_input = str(gene_id_or_name)
     
-    return html.A(
-        gene_name,
-        href=omim_url,
-        target="_blank",
-        style={
-            "fontWeight": "bold", 
-            "color": "#0097A7", 
-            "textDecoration": "none",
-            "fontSize": "12px"
-        },
-        title=f"View {gene_name} in OMIM database"
-    )
+    # Handle multiple genes separated by common delimiters
+    gene_separators = [' • ', ' · ', ',', ';', '|', '/', '&']
+    genes = [gene_input]
+    
+    # Split by each separator
+    for sep in gene_separators:
+        if sep in gene_input:
+            genes = [g.strip() for part in genes for g in part.split(sep) if g.strip()]
+            break
+    
+    # DEDUPLICATION: Remove duplicates while preserving order
+    unique_genes = []
+    seen = set()
+    for gene in genes:
+        gene = gene.strip()
+        if gene and gene not in seen:
+            unique_genes.append(gene)
+            seen.add(gene)
+    
+    # Convert each gene ID to gene name and create links
+    gene_links = []
+    
+    for i, gene in enumerate(unique_genes):
+        gene_name = get_gene_name_from_id(gene)
+        
+        if gene_name == 'UNKNOWN' or not gene_name:
+            # If we can't map it, show the original value
+            gene_element = html.Span(
+                gene, 
+                style={
+                    "color": "#6c757d", 
+                    "fontStyle": "italic",
+                    "fontSize": "12px"
+                }
+            )
+        else:
+            # Create OMIM search URL
+            omim_url = f"https://www.omim.org/search?index=entry&start=1&limit=10&search={gene_name}"
+            
+            gene_element = html.A(
+                gene_name,
+                href=omim_url,
+                target="_blank",
+                style={
+                    "fontWeight": "bold", 
+                    "color": "#0097A7", 
+                    "textDecoration": "none",
+                    "fontSize": "12px"
+                },
+                title=f"View {gene_name} in OMIM database"
+            )
+        
+        gene_links.append(gene_element)
+        
+        # Add separator between genes (but not after the last one)
+        if i < len(unique_genes) - 1:
+            gene_links.append(
+                html.Span(" • ", style={
+                    "color": "#6c757d", 
+                    "fontSize": "12px",
+                    "margin": "0 2px"
+                })
+            )
+    
+    # Return single element or container with multiple genes
+    if len(gene_links) == 1:
+        return gene_links[0]
+    else:
+        return html.Div(
+            gene_links,
+            style={
+                "display": "flex",
+                "flexWrap": "wrap",
+                "alignItems": "center",
+                "gap": "2px"
+            }
+        )
 
 def is_dataframe_empty(df):
     """Check if DataFrame is empty (works for both Polars and Pandas)"""
@@ -241,7 +304,7 @@ def apply_filters(df, search_term=None, genotype_filter=None, chromosome_filter=
         elif genotype_filter == "hom_ref":
             df = df.filter(pl.col('GT').is_in(['0/0', '0|0']))
     
-    # Search filter - UPDATED to search both gene IDs and gene names
+    # Search filter - UPDATED to search both gene IDs and gene names, including multiple genes
     if search_term:
         search_lower = search_term.lower()
         
@@ -264,6 +327,28 @@ def apply_filters(df, search_term=None, genotype_filter=None, chromosome_filter=
         # Add condition to search by gene name (via matching IDs)
         if matching_gene_ids:
             search_conditions.append(pl.col('gene').is_in(matching_gene_ids))
+        
+        # ENHANCED: Handle multiple genes in gene field
+        # Search for cases where the search term matches any gene in a multi-gene field
+        for gene_id, gene_name in gene_mapping.items():
+            if search_lower in gene_name.lower():
+                # Add patterns for multiple gene formats
+                search_conditions.extend([
+                    pl.col('gene').str.contains(f",{gene_id}"),  # gene_id appears after comma
+                    pl.col('gene').str.contains(f"{gene_id},"),  # gene_id appears before comma
+                    pl.col('gene').str.contains(f";{gene_id}"),  # semicolon separated
+                    pl.col('gene').str.contains(f"{gene_id};"),
+                    pl.col('gene').str.contains(f"|{gene_id}"),  # pipe separated
+                    pl.col('gene').str.contains(f"{gene_id}|"),
+                    pl.col('gene').str.contains(f"/{gene_id}"),  # slash separated
+                    pl.col('gene').str.contains(f"{gene_id}/"),
+                    pl.col('gene').str.contains(f"&{gene_id}"),  # ampersand separated
+                    pl.col('gene').str.contains(f"{gene_id}&"),
+                    pl.col('gene').str.contains(f" • {gene_id}"),  # bullet separated
+                    pl.col('gene').str.contains(f"{gene_id} • "),
+                    pl.col('gene').str.contains(f" · {gene_id}"),  # middle dot separated
+                    pl.col('gene').str.contains(f"{gene_id} · ")
+                ])
         
         # Combine search conditions with OR
         combined_search = search_conditions[0]
