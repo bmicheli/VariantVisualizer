@@ -126,33 +126,46 @@ def handle_clear_samples(clear_clicks):
         return []
     return dash.no_update
 
-# Sidebar toggle callback
+# Updated callback for sidebar with apply button functionality
 @app.callback(
     [Output("filter-sidebar", "className"), Output("sidebar-overlay", "className"), Output("sidebar-open", "data")],
-    [Input("more-filters-btn", "n_clicks"), Input("close-sidebar-btn", "n_clicks"), Input("sidebar-overlay", "n_clicks")],
+    [Input("more-filters-btn", "n_clicks"), 
+     Input("close-sidebar-btn", "n_clicks"), 
+     Input("sidebar-overlay", "n_clicks"),
+     Input("apply-filters-btn", "n_clicks")],  # Add apply button as trigger
     [State("sidebar-open", "data")],
     prevent_initial_call=True
 )
-def toggle_sidebar(toggle_clicks, close_clicks, overlay_clicks, is_open):
-    """Toggle sidebar visibility"""
+def toggle_sidebar(toggle_clicks, close_clicks, overlay_clicks, apply_clicks, is_open):
+    """Toggle sidebar visibility - closes when apply is clicked"""
     ctx = callback_context
     if not ctx.triggered:
         return "filter-sidebar", "sidebar-overlay", False
     
+    trigger = ctx.triggered[0]['prop_id'].split('.')[0]
+    
+    # Close sidebar when apply button is clicked
+    if trigger == "apply-filters-btn":
+        return "filter-sidebar", "sidebar-overlay", False
+    
+    # Toggle logic for other buttons
     new_state = not is_open
     sidebar_class = "filter-sidebar open" if new_state else "filter-sidebar"
     overlay_class = "sidebar-overlay open" if new_state else "sidebar-overlay"
     return sidebar_class, overlay_class, new_state
 
-# OPTIMIZED: Main variants display callback
+# UPDATED: Main variants display callback - now responds to apply button
 @app.callback(
     [Output("variants-display", "children"), Output("variant-count", "children"), Output("filtered-variants", "data")],
-    [Input("search-input", "value"), Input("active-filters", "data"), Input("sample-selector", "value"),
-     Input("vaf-range-slider", "value")],
+    [Input("apply-filters-btn", "n_clicks"),  # Primary trigger: apply button
+     Input("sample-selector", "value"),       # Also update when samples change
+     Input("active-filters", "data")],        # Also update when preset filters change
+    [State("search-input", "value"), 
+     State("vaf-range-slider", "value")],     # Get current filter values
     prevent_initial_call=False
 )
-def update_variants_display_optimized(search_term, active_filters, selected_samples, vaf_range):
-    """Optimized variants display with performance improvements"""
+def update_variants_display_optimized(apply_clicks, selected_samples, active_filters, search_term, vaf_range):
+    """Optimized variants display - now controlled by apply button"""
     
     # Early return if no samples selected
     if not selected_samples:
@@ -214,7 +227,6 @@ def update_variants_display_optimized(search_term, active_filters, selected_samp
         logger.error(f"Error in update_variants_display: {e}")
         error_display = create_error_component(f"Error loading variants: {str(e)}")
         return error_display, create_variant_count_display(0, 0, 0), []
-
 # NEW: Lazy loading callback for variant details
 @app.callback(
     Output({"type": "variant-details-lazy", "variant": MATCH, "sample": MATCH}, "children"),
@@ -258,18 +270,21 @@ def reset_all_filters(n_clicks):
         return "", {}, [0, 1]
     return dash.no_update
 
-# Clear filters callback from sidebar
+# Updated Clear filters callback to include apply functionality
 @app.callback(
     [Output("search-input", "value", allow_duplicate=True), 
      Output("active-filters", "data", allow_duplicate=True),
-     Output("vaf-range-slider", "value", allow_duplicate=True)],
+     Output("vaf-range-slider", "value", allow_duplicate=True),
+     Output("filter-sidebar", "className", allow_duplicate=True), 
+     Output("sidebar-overlay", "className", allow_duplicate=True), 
+     Output("sidebar-open", "data", allow_duplicate=True)],
     [Input("clear-filters", "n_clicks")],
     prevent_initial_call=True
 )
 def clear_all_filters_sidebar(n_clicks):
-    """Clear filters from sidebar clear button"""
+    """Clear filters from sidebar clear button and close sidebar"""
     if n_clicks:
-        return "", {}, [0, 1]
+        return "", {}, [0, 1], "filter-sidebar", "sidebar-overlay", False
     return dash.no_update
 
 # Variant row expansion callback
@@ -468,17 +483,17 @@ app.clientside_callback(
     [Input("active-filters", "data")]
 )
 
-# Real-time search callback (with debouncing)
-@app.callback(
-    Output("search-input", "valid"),
-    [Input("search-input", "value")],
-    prevent_initial_call=True
-)
-def validate_search_input(search_value):
-    """Validate search input in real-time"""
-    if search_value and len(search_value) < 2:
-        return False
-    return True
+# # Real-time search callback (with debouncing)
+# @app.callback(
+#     Output("search-input", "valid"),
+#     [Input("search-input", "value")],
+#     prevent_initial_call=True
+# )
+# def validate_search_input(search_value):
+#     """Validate search input in real-time"""
+#     if search_value and len(search_value) < 2:
+#         return False
+#     return True
 
 # =============================================================================
 # APP STARTUP AND RUN

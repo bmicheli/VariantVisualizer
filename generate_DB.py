@@ -11,6 +11,24 @@ from datetime import datetime
 import argparse
 import sys
 
+def check_dependencies():
+    """Check if required dependencies are available"""
+    missing_deps = []
+    
+    try:
+        import pyarrow
+        import pyarrow.parquet
+        logger.info(f"PyArrow version: {pyarrow.__version__}")
+    except ImportError:
+        missing_deps.append("pyarrow")
+        logger.warning("PyArrow not found - will use native parquet writer")
+    
+    if missing_deps:
+        logger.info("To install missing dependencies, run:")
+        logger.info(f"pip install {' '.join(missing_deps)}")
+    
+    return len(missing_deps) == 0
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -167,21 +185,23 @@ class VCFToParquetConverter:
 
         return result
 
-    def _safe_float(self, value: str) -> Optional[float]:
-        if not value or value == ".":
-            return None
+    def _safe_float(self, value: str) -> float:
+        """Safely convert string to float, return 0.0 for invalid values"""
+        if not value or value == "." or value == "":
+            return 0.0
         try:
             return float(value.split(",")[0])
-        except Exception:
-            return None
+        except (ValueError, TypeError):
+            return 0.0
 
-    def _safe_int(self, value: str) -> Optional[int]:
-        if not value or value == ".":
-            return None
+    def _safe_int(self, value: str) -> int:
+        """Safely convert string to int, return 0 for invalid values"""
+        if not value or value == "." or value == "":
+            return 0
         try:
             return int(value.split(",")[0])
-        except Exception:
-            return None
+        except (ValueError, TypeError):
+            return 0
 
     def _parse_consequence(self, consequence: str) -> str:
         if not consequence or consequence == ".":
@@ -206,7 +226,8 @@ class VCFToParquetConverter:
                     return part
         return aa_change if aa_change.startswith("p.") else "p.?"
 
-    def _parse_clinvar(self, clinvar: str) -> Optional[str]:
+    def _parse_clinvar(self, clinvar: str) -> str:
+        """Parse ClinVar significance, return empty string for invalid values"""
         if not clinvar or clinvar == ".":
             return ""
         clinvar_values = re.split(r"[,;|/]", clinvar.lower())
@@ -230,17 +251,22 @@ class VCFToParquetConverter:
 
     def parse_sample_data(self, format_str: str, sample_str: str) -> Dict[str, Any]:
         if not format_str or not sample_str or sample_str == ".":
-            return {"genotype": "./.", "depth": 0, "vaf": 0.0, "quality": 0}
+            return {"genotype": "./.", "depth": 0, "vaf": 0.0, "quality": 0.0, "allelic_depth": "0,0"}
+        
         format_fields = format_str.split(":")
         sample_values = sample_str.split(":")
+        
+        # Pad sample values with "." if needed
         while len(sample_values) < len(format_fields):
             sample_values.append(".")
+            
         sample_data = dict(zip(format_fields, sample_values))
+        
         return {
             "genotype": sample_data.get("GT", "./."),
-            "depth": self._safe_int(sample_data.get("DP", "0")) or 0,
+            "depth": self._safe_int(sample_data.get("DP", "0")),
             "vaf": self._calculate_vaf(sample_data),
-            "quality": self._safe_float(sample_data.get("GQ", "0")) or 0,
+            "quality": self._safe_float(sample_data.get("GQ", "0")),
             "allelic_depth": sample_data.get("AD", "0,0"),
         }
 
@@ -260,116 +286,228 @@ class VCFToParquetConverter:
                 pass
         return 0.0
 
+    def create_empty_dataframe_with_schema(self) -> pl.DataFrame:
+        """Create an empty DataFrame with the correct schema"""
+        schema = {
+            "CHROM": pl.Utf8,
+            "POS": pl.UInt32,
+            "ID": pl.Utf8,
+            "REF": pl.Utf8,
+            "ALT": pl.Utf8,
+            "QUAL": pl.Float32,
+            "FILTER": pl.Utf8,
+            "SAMPLE": pl.Utf8,
+            "GT": pl.Utf8,
+            "DP": pl.UInt16,
+            "VAF": pl.Float32,
+            "GQ": pl.Float32,
+            "AD": pl.Utf8,
+            "variant_key": pl.Utf8,
+            "gene": pl.Utf8,
+            "consequence": pl.Utf8,
+            "aa_change": pl.Utf8,
+            "clinvar_sig": pl.Utf8,
+            "clinvar_id": pl.Utf8,
+            "clinvar_disease": pl.Utf8,
+            "clinvar_review_status": pl.Utf8,
+            "upload_date": pl.Utf8,
+            "review_status": pl.Utf8,
+            "af": pl.Float32,
+            "ac": pl.Int32,
+            "an": pl.Int32,
+            "qual": pl.Float32,
+            "gnomad_af": pl.Float32,
+            "cadd_score": pl.Float32,
+            "sift_score": pl.Float32,
+            "polyphen_score": pl.Float32,
+            "revel_score": pl.Float32,
+            "splice_ai": pl.Float32,
+            "pli_score": pl.Float32,
+            "primateai_score": pl.Float32,
+        }
+        return pl.DataFrame(schema=schema)
+
     def process_vcf_chunk(self, chunk_lines: List[str], samples: List[str]) -> pl.DataFrame:
         variant_records = []
+        
         for line in chunk_lines:
             if line.startswith("#") or not line.strip():
                 continue
+            
             fields = line.strip().split("\t")
             if len(fields) < 8:
                 continue
+                
             chrom, pos, var_id, ref, alt, qual, filter_val, info = fields[:8]
             format_str = fields[8] if len(fields) > 8 else ""
             sample_data = fields[9:] if len(fields) > 9 else []
+            
             annotations = self.extract_info_annotations(info)
             variant_key = f"{chrom}:{pos}:{ref}:{alt}"
+            
             for i, sample in enumerate(samples):
                 if i < len(sample_data):
                     sample_info = self.parse_sample_data(format_str, sample_data[i])
+                    
+                    # Skip reference calls
                     if sample_info["genotype"] in ["0/0", "0|0", "./."]:
                         continue
+                    
+                    # Create record with consistent types
                     record = {
-                        "CHROM": chrom.replace("chr", ""),
+                        "CHROM": str(chrom.replace("chr", "")),
                         "POS": int(pos),
-                        "ID": var_id if var_id != "." else "",
-                        "REF": ref,
-                        "ALT": alt,
-                        "QUAL": self._safe_float(qual) or 0,
-                        "FILTER": filter_val,
-                        "SAMPLE": sample,
-                        "GT": sample_info["genotype"],
-                        "DP": sample_info["depth"],
-                        "VAF": sample_info["vaf"],
-                        "GQ": sample_info["quality"],
-                        "AD": sample_info["allelic_depth"],
-                        "variant_key": variant_key,
+                        "ID": str(var_id) if var_id != "." else "",
+                        "REF": str(ref),
+                        "ALT": str(alt),
+                        "QUAL": self._safe_float(qual),
+                        "FILTER": str(filter_val),
+                        "SAMPLE": str(sample),
+                        "GT": str(sample_info["genotype"]),
+                        "DP": int(sample_info["depth"]),
+                        "VAF": float(sample_info["vaf"]),
+                        "GQ": float(sample_info["quality"]),
+                        "AD": str(sample_info["allelic_depth"]),
+                        "variant_key": str(variant_key),
                         "gene": str(annotations.get("gene", "UNKNOWN")),
                         "consequence": str(annotations.get("consequence", "variant")),
                         "aa_change": str(annotations.get("aa_change", "p.?")),
-                        "clinvar_sig": annotations.get("clinvar_sig") or "",
-                        "clinvar_id": annotations.get("clinvar_id") or "",
-                        "clinvar_disease": annotations.get("clinvar_disease") or "",
-                        "clinvar_review_status": annotations.get("clinvar_review_status") or "",
-                        "upload_date": datetime.now().isoformat(),
+                        "clinvar_sig": str(annotations.get("clinvar_sig", "")),
+                        "clinvar_id": str(annotations.get("clinvar_id", "")),
+                        "clinvar_disease": str(annotations.get("clinvar_disease", "")),
+                        "clinvar_review_status": str(annotations.get("clinvar_review_status", "")),
+                        "upload_date": str(datetime.now().isoformat()),
                         "review_status": "Pending",
-                        **{k: v for k, v in annotations.items() if k not in [
-                            "gene","consequence","aa_change","clinvar_sig","clinvar_id","clinvar_disease","clinvar_review_status"
-                        ]},
+                        "af": float(annotations.get("af", 0.0)),
+                        "ac": int(annotations.get("ac", 0)),
+                        "an": int(annotations.get("an", 0)),
+                        "qual": float(annotations.get("qual", 0.0)),
+                        "gnomad_af": float(annotations.get("gnomad_af", 0.0)),
+                        "cadd_score": float(annotations.get("cadd_score", 0.0)),
+                        "sift_score": float(annotations.get("sift_score", 0.0)),
+                        "polyphen_score": float(annotations.get("polyphen_score", 0.0)),
+                        "revel_score": float(annotations.get("revel_score", 0.0)),
+                        "splice_ai": float(annotations.get("splice_ai", 0.0)),
+                        "pli_score": float(annotations.get("pli_score", 0.0)),
+                        "primateai_score": float(annotations.get("primateai_score", 0.0)),
                     }
                     variant_records.append(record)
+        
         if not variant_records:
-            return pl.DataFrame()
-        df = pl.DataFrame(variant_records)
-        df = df.with_columns([
-            pl.col("CHROM").cast(pl.Utf8),
-            pl.col("POS").cast(pl.UInt32),
-            pl.col("QUAL").cast(pl.Float32),
-            pl.col("DP").cast(pl.UInt16),
-            pl.col("VAF").cast(pl.Float32),
-            pl.col("GQ").cast(pl.Float32),
-            pl.col("af").cast(pl.Float32),
-            pl.col("gnomad_af").cast(pl.Float32),
-            pl.col("cadd_score").cast(pl.Float32),
-            pl.col("sift_score").cast(pl.Float32),
-            pl.col("polyphen_score").cast(pl.Float32),
-            pl.col("splice_ai").cast(pl.Float32),
-            pl.col("gene").cast(pl.Utf8),
-            pl.col("consequence").cast(pl.Utf8),
-            pl.col("aa_change").cast(pl.Utf8),
-            pl.col("clinvar_sig").cast(pl.Utf8),
-            pl.col("clinvar_id").cast(pl.Utf8),
-            pl.col("clinvar_disease").cast(pl.Utf8),
-            pl.col("clinvar_review_status").cast(pl.Utf8),
-        ])
+            return self.create_empty_dataframe_with_schema()
+        
+        # Create DataFrame with explicit schema
+        df = pl.DataFrame(variant_records, schema={
+            "CHROM": pl.Utf8,
+            "POS": pl.UInt32,
+            "ID": pl.Utf8,
+            "REF": pl.Utf8,
+            "ALT": pl.Utf8,
+            "QUAL": pl.Float32,
+            "FILTER": pl.Utf8,
+            "SAMPLE": pl.Utf8,
+            "GT": pl.Utf8,
+            "DP": pl.UInt16,
+            "VAF": pl.Float32,
+            "GQ": pl.Float32,
+            "AD": pl.Utf8,
+            "variant_key": pl.Utf8,
+            "gene": pl.Utf8,
+            "consequence": pl.Utf8,
+            "aa_change": pl.Utf8,
+            "clinvar_sig": pl.Utf8,
+            "clinvar_id": pl.Utf8,
+            "clinvar_disease": pl.Utf8,
+            "clinvar_review_status": pl.Utf8,
+            "upload_date": pl.Utf8,
+            "review_status": pl.Utf8,
+            "af": pl.Float32,
+            "ac": pl.Int32,
+            "an": pl.Int32,
+            "qual": pl.Float32,
+            "gnomad_af": pl.Float32,
+            "cadd_score": pl.Float32,
+            "sift_score": pl.Float32,
+            "polyphen_score": pl.Float32,
+            "revel_score": pl.Float32,
+            "splice_ai": pl.Float32,
+            "pli_score": pl.Float32,
+            "primateai_score": pl.Float32,
+        })
+        
         return df
 
     def convert_vcf_to_parquet(self, vcf_file: str, output_name: str = "variants") -> str:
         logger.info(f"Starting conversion of {vcf_file}")
         samples, metadata = self.parse_vcf_header(vcf_file)
         output_file = self.output_dir / f"{output_name}.parquet"
+        
         chunk_dfs = []
         total_variants = 0
+        
         with open(vcf_file, "r") as f:
             chunk_lines = []
             line_count = 0
+            
             for line in f:
                 if line.startswith("#"):
                     continue
+                    
                 chunk_lines.append(line)
                 line_count += 1
+                
                 if len(chunk_lines) >= self.chunk_size:
                     chunk_df = self.process_vcf_chunk(chunk_lines, samples)
                     if not chunk_df.is_empty():
                         chunk_dfs.append(chunk_df)
                         total_variants += len(chunk_df)
+                        logger.info(f"Processed {line_count} lines, {total_variants} variants so far")
                     chunk_lines = []
+            
+            # Process remaining lines
             if chunk_lines:
                 chunk_df = self.process_vcf_chunk(chunk_lines, samples)
                 if not chunk_df.is_empty():
                     chunk_dfs.append(chunk_df)
                     total_variants += len(chunk_df)
+        
         if not chunk_dfs:
             logger.error("No variant data found in VCF file")
             return ""
+        
+        # Concatenate all chunks
+        logger.info("Concatenating all chunks...")
         final_df = pl.concat(chunk_dfs)
         final_df = final_df.sort(["CHROM", "POS"])
-        final_df.write_parquet(
-            output_file,
-            compression="snappy",
-            use_pyarrow=True,
-            row_group_size=50000,
-            statistics=True,
-        )
+        
+        # Write to parquet
+        logger.info("Writing to parquet file...")
+        try:
+            # Try with PyArrow first
+            final_df.write_parquet(
+                output_file,
+                compression="snappy",
+                use_pyarrow=True,
+                row_group_size=50000,
+                statistics=True,
+            )
+        except (ModuleNotFoundError, ImportError) as e:
+            logger.warning(f"PyArrow not available ({e}), falling back to native parquet writer")
+            try:
+                final_df.write_parquet(
+                    output_file,
+                    compression="snappy",
+                    use_pyarrow=False,
+                )
+            except Exception as e:
+                logger.error(f"Failed to write parquet file: {e}")
+                # Fallback to CSV if parquet fails
+                csv_output = output_file.with_suffix('.csv')
+                logger.info(f"Falling back to CSV format: {csv_output}")
+                final_df.write_csv(csv_output)
+                return str(csv_output)
+        
+        # Create metadata
         stats = {
             "total_variants": len(final_df),
             "total_samples": len(samples),
@@ -378,16 +516,19 @@ class VCFToParquetConverter:
             "date_created": datetime.now().isoformat(),
             "source_file": vcf_file,
         }
+        
         metadata_file = self.output_dir / f"{output_name}_metadata.json"
         import json
         with open(metadata_file, "w") as f:
             json.dump(stats, f, indent=2)
+        
         logger.info(f"Conversion complete: {total_variants} variants saved to {output_file}")
         return str(output_file)
 
     def create_sample_index(self, parquet_file: str):
         logger.info("Creating sample index...")
         df = pl.read_parquet(parquet_file)
+        
         sample_stats = (
             df.group_by("SAMPLE")
             .agg([
@@ -397,38 +538,44 @@ class VCFToParquetConverter:
                 pl.col("clinvar_sig").filter(pl.col("clinvar_sig") != "").len().alias("clinvar_annotated"),
             ])
         )
+        
         index_file = self.output_dir / "sample_index.parquet"
         sample_stats.write_parquet(index_file)
         logger.info(f"Sample index created: {index_file}")
 
 def main():
-	"""Main execution function"""
-	parser = argparse.ArgumentParser(description="Convert VCF files to optimized Parquet format (ClinVar focused)")
-	parser.add_argument("vcf_file", help="Input VCF file path")
-	parser.add_argument("-o", "--output-dir", default="data", help="Output directory")
-	parser.add_argument("-n", "--name", default="variants", help="Output file name prefix")
-	parser.add_argument("-c", "--chunk-size", type=int, default=10000, help="Chunk size for processing")
-	parser.add_argument("--create-index", action="store_true", help="Create sample index")
-	
-	args = parser.parse_args()
-	
-	if not os.path.exists(args.vcf_file):
-		logger.error(f"VCF file not found: {args.vcf_file}")
-		sys.exit(1)
-	
-	# Initialize converter
-	converter = VCFToParquetConverter(args.output_dir, args.chunk_size)
-	
-	# Convert VCF to Parquet
-	output_file = converter.convert_vcf_to_parquet(args.vcf_file, args.name)
-	
-	if output_file and args.create_index:
-		converter.create_sample_index(output_file)
-	
-	logger.info("Conversion pipeline completed successfully!")
+    """Main execution function"""
+    parser = argparse.ArgumentParser(description="Convert VCF files to optimized Parquet format (ClinVar focused)")
+    parser.add_argument("vcf_file", help="Input VCF file path")
+    parser.add_argument("-o", "--output-dir", default="data", help="Output directory")
+    parser.add_argument("-n", "--name", default="variants", help="Output file name prefix")
+    parser.add_argument("-c", "--chunk-size", type=int, default=10000, help="Chunk size for processing")
+    parser.add_argument("--create-index", action="store_true", help="Create sample index")
+    parser.add_argument("--skip-deps-check", action="store_true", help="Skip dependency check")
+    
+    args = parser.parse_args()
+    
+    # Check dependencies unless explicitly skipped
+    if not args.skip_deps_check:
+        check_dependencies()
+    
+    if not os.path.exists(args.vcf_file):
+        logger.error(f"VCF file not found: {args.vcf_file}")
+        sys.exit(1)
+    
+    # Initialize converter
+    converter = VCFToParquetConverter(args.output_dir, args.chunk_size)
+    
+    # Convert VCF to Parquet
+    output_file = converter.convert_vcf_to_parquet(args.vcf_file, args.name)
+    
+    if output_file and args.create_index:
+        converter.create_sample_index(output_file)
+    
+    logger.info("Conversion pipeline completed successfully!")
 
 if __name__ == "__main__":
-	main()
+    main()
 
 # Example usage:
 # python vcf_to_parquet.py merged_variants.vcf -o data -n variants --create-index

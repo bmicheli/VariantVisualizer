@@ -165,9 +165,9 @@ def create_beautiful_variant_display(df):
 	if total_count > MAX_DISPLAY_VARIANTS:
 		performance_notice = [
 			dbc.Alert([
-				html.I(className="fas fa-bolt me-2"),
-				f"Performance mode: Showing first {showing_count} of {total_count:,} variants. ",
-				html.B("Use filters to narrow results for better performance.", style={"color": "#0066cc"})
+				html.I(className="fa fa-exclamation-triangle"),
+				f" Performance mode: Showing first {showing_count} of {total_count:,} variants. ",
+				
 			], color="warning", className="mb-3", style={"fontSize": "0.9em"})
 		]
 	
@@ -296,11 +296,11 @@ def create_variant_details_accordion(variant):
 							html.Strong("ClinVar Significance: "),
 							get_clinvar_badge(variant.get('clinvar_sig'))
 						], className="mb-2"),
-						
+											
 						html.Div([
-							html.Strong("Gene: "),
+							html.Strong("Gene: ", style={"marginRight": "8px"}),
 							create_gene_link(variant.get('gene', 'UNKNOWN'))
-						], className="mb-2"),
+						], className="mb-2", style={"display": "flex", "alignItems": "center", "flexWrap": "wrap"}),
 						
 						html.Div([
 							html.Strong("Consequence: "),
@@ -542,7 +542,7 @@ def create_comments_display_accordion(comments_df, variant_key, sample_id):
 	return html.Div(comment_items)
 
 def create_sidebar():
-	"""Create the advanced filters sidebar with only Search and VAF Range"""
+	"""Create the advanced filters sidebar with Search, VAF Range, and Apply button"""
 	return html.Div([
 		# Sidebar header
 		html.Div([
@@ -563,19 +563,30 @@ def create_sidebar():
 		html.Div([
 			# Search
 			html.Div([
-				html.Label("🔍 Search", className="fw-bold mb-2"),
+				html.Label([
+					html.I(className="fas fa-search me-2"),
+					"Search Genes, Samples..."
+				], className="fw-bold mb-2 text-primary"),
 				dbc.Input(
 					id="search-input",
-					placeholder="Search genes, samples...",
-					debounce=True
+					placeholder="e.g., BRCA1, Sample001, chr1...",
+					debounce=True,
+					# Remove automatic validation styling that causes green icon
+					style={"borderRadius": "8px"}
+				),
+				html.Small(
+					"Search by gene name, sample ID, chromosome, or consequence", 
+					className="text-muted mt-1 d-block"
 				)
 			], className="mb-4"),
 			
-			# VAF Range Filter only
+			# VAF Range Filter
 			html.Div([
-				html.Label("⚙️ Advanced Filters", className="fw-bold mb-3"),
-				html.Br(),
-				html.Label("VAF Range:", className="small mb-1"),
+				html.Label([
+					html.I(className="fas fa-chart-line me-2"),
+					"Variant Allele Frequency (VAF)"
+				], className="fw-bold mb-2 text-primary"),
+				html.Label("Filter by VAF Range:", className="small mb-2"),
 				dcc.RangeSlider(
 					id="vaf-range-slider",
 					min=0,
@@ -584,21 +595,38 @@ def create_sidebar():
 					value=[0, 1],
 					marks={0: '0%', 0.25: '25%', 0.5: '50%', 0.75: '75%', 1: '100%'},
 					tooltip={"placement": "bottom", "always_visible": True}
+				),
+				html.Small(
+					"Only show variants within the selected VAF range", 
+					className="text-muted mt-2 d-block"
 				)
 			], className="mb-4"),
 			
-			# Clear Filters
-			dbc.Button(
-				"🗑️ Clear All Filters", 
+			# Apply and Clear buttons
+			html.Div([
+				dbc.Button([
+					html.I(className="fas fa-search me-2"),
+					"Apply Filters & Search"
+				], 
+				id="apply-filters-btn", 
+				color="primary", 
+				size="md", 
+				className="w-100 mb-3",
+				style={"borderRadius": "8px", "fontWeight": "bold"}
+				),
+				dbc.Button([
+					html.I(className="fas fa-trash me-2"),
+					"Clear All Filters"
+				], 
 				id="clear-filters", 
 				color="outline-danger", 
 				size="sm", 
-				className="w-100 mt-3"
-			)
+				className="w-100",
+				style={"borderRadius": "8px"}
+				)
+			])
 		], className="p-3")
 	], id="filter-sidebar", className="filter-sidebar")
-	
-		
 def create_header():
 	"""Create the main header component"""
 	return dbc.Card([
