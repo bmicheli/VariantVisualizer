@@ -1,7 +1,7 @@
 """
 Gene Panel Management for Variant Visualizer
 Handles fetching, storing, and filtering by gene panels from PanelApp UK, Australia, and internal panels
-UPDATED WITH CORRECT AU API AND SIMPLIFIED DISPLAY
+UPDATED: REMOVED GREEN GENE FILTERING AND FIXED CONFIDENCE LEVEL PARSING
 """
 
 import requests
@@ -102,7 +102,7 @@ class GenePanelManager:
                             'panel_name': panel_name,
                             'source': 'internal',
                             'gene_symbol': gene_symbol.strip(),
-                            'gene_confidence': 'GREEN',
+                            'gene_confidence': 'GREEN',  # Internal panels are all green
                             'panel_version': self._extract_version(panel_file.stem),
                             'last_updated': datetime.now().isoformat(),
                             'panel_url': ''
@@ -160,132 +160,300 @@ class GenePanelManager:
         return "v1"
     
     def fetch_panelapp_uk_panels(self, max_panels=None):
-        """Fetch panels from PanelApp UK"""
-        logger.info("Fetching panels from PanelApp UK...")
+        """Fetch ALL panels from PanelApp UK with pagination support"""
+        logger.info("Fetching ALL panels from PanelApp UK with pagination...")
         panels_data = []
         
         try:
-            # Get list of panels
-            response = requests.get(f"{PANELAPP_UK_BASE_URL}/panels/", timeout=30)
-            response.raise_for_status()
-            panels_list = response.json()['results']
+            # Start with first page to get total count
+            url = f"{PANELAPP_UK_BASE_URL}/panels/"
+            page = 1
+            total_panels_fetched = 0
             
-            if max_panels:
-                panels_list = panels_list[:max_panels]
-            
-            for i, panel in enumerate(panels_list):
-                panel_id = str(panel['id'])
-                panel_name = panel['name']
-                panel_version = panel.get('version', '1.0')
+            while url:
+                logger.info(f"Fetching UK panels page {page}...")
+                response = requests.get(url, timeout=30)
+                response.raise_for_status()
+                data = response.json()
                 
-                logger.info(f"Fetching UK panel {i+1}/{len(panels_list)}: {panel_name}")
+                panels_list = data.get('results', [])
+                total_count = data.get('count', 0)
+                next_url = data.get('next')
                 
-                try:
-                    # Get detailed panel info with genes
-                    detail_response = requests.get(
-                        f"{PANELAPP_UK_BASE_URL}/panels/{panel_id}/",
-                        timeout=30
-                    )
-                    detail_response.raise_for_status()
-                    panel_detail = detail_response.json()
+                if page == 1:
+                    logger.info(f"Total panels available in PanelApp UK: {total_count}")
+                
+                logger.info(f"Processing {len(panels_list)} panels from page {page}")
+                
+                for i, panel in enumerate(panels_list):
+                    panel_id = str(panel['id'])
+                    panel_name = panel['name']
+                    panel_version = panel.get('version', '1.0')
                     
-                    # Extract genes and count them
-                    genes = panel_detail.get('genes', [])
-                    gene_count = len(genes)
+                    total_panels_fetched += 1
+                    logger.info(f"Fetching UK panel {total_panels_fetched}/{total_count}: {panel_name}")
                     
-                    # Format panel name: "Panel Name Version X (Y genes)"
-                    formatted_name = f"{panel_name} Version {panel_version} ({gene_count} genes)"
-                    
-                    for gene in genes:
-                        gene_data = gene.get('gene_data', {})
-                        panels_data.append({
-                            'panel_id': f"uk_{panel_id}",
-                            'panel_name': formatted_name,
-                            'source': 'panelapp_uk',
-                            'gene_symbol': gene_data.get('gene_symbol', ''),
-                            'gene_confidence': gene.get('confidence_level', 'UNKNOWN'),
-                            'panel_version': panel_version,
-                            'last_updated': datetime.now().isoformat(),
-                            'panel_url': f"https://panelapp.genomicsengland.co.uk/panels/{panel_id}/"
-                        })
-                    
-                    # Add delay to be respectful to API
-                    time.sleep(0.5)
-                    
-                except Exception as e:
-                    logger.error(f"Error fetching UK panel {panel_id}: {e}")
-                    continue
+                    try:
+                        # Get detailed panel info with genes
+                        detail_response = requests.get(
+                            f"{PANELAPP_UK_BASE_URL}/panels/{panel_id}/",
+                            timeout=30
+                        )
+                        detail_response.raise_for_status()
+                        panel_detail = detail_response.json()
+                        
+                        # Extract genes and count them
+                        genes = panel_detail.get('genes', [])
+                        gene_count = len(genes)
+                        
+                        # Debug: Log first few genes to understand structure
+                        if total_panels_fetched == 1 and genes:
+                            logger.info(f"Sample UK gene structure: {genes[0]}")
+                            # Log ALL fields to understand the structure
+                            logger.info(f"Sample UK gene ALL FIELDS: {json.dumps(genes[0], indent=2)}")
+                        
+                        # Format panel name: "Panel Name Version X (Y genes)"
+                        formatted_name = f"{panel_name} Version {panel_version} ({gene_count} genes)"
+                        
+                        for gene in genes:
+                            # DEBUG: Log the first few genes completely to understand structure
+                            if total_panels_fetched == 1 and len(panels_data) < 5:
+                                logger.info(f"DEBUG UK Gene: {json.dumps(gene, indent=2)}")
+                            
+                            # Parse gene data - try different possible field structures
+                            gene_data = gene.get('gene_data', {})
+                            gene_symbol = gene_data.get('gene_symbol', '') or gene_data.get('hgnc_symbol', '') or gene.get('gene_symbol', '')
+                            
+                            # Parse confidence level - ENHANCED DEBUG VERSION
+                            confidence_raw = None
+                            confidence_field = None
+                            
+                            # Try all possible confidence fields
+                            possible_fields = ['confidence_level', 'confidence', 'level_of_confidence', 'rating', 'gene_confidence']
+                            for field in possible_fields:
+                                if field in gene:
+                                    confidence_raw = gene[field]
+                                    confidence_field = field
+                                    break
+                                elif field in gene_data:
+                                    confidence_raw = gene_data[field]
+                                    confidence_field = f"gene_data.{field}"
+                                    break
+                            
+                            # Log what we found for debugging
+                            if total_panels_fetched == 1 and len(panels_data) < 5:
+                                logger.info(f"Gene {gene_symbol}: confidence_field='{confidence_field}', confidence_raw='{confidence_raw}'")
+                                logger.info(f"Available gene fields: {list(gene.keys())}")
+                                logger.info(f"Available gene_data fields: {list(gene_data.keys())}")
+                            
+                            # Normalize confidence values
+                            if confidence_raw:
+                                confidence_upper = str(confidence_raw).upper()
+                                if 'GREEN' in confidence_upper or confidence_upper == '3':
+                                    confidence_level = 'GREEN'
+                                elif 'AMBER' in confidence_upper or confidence_upper == '2':
+                                    confidence_level = 'AMBER'
+                                elif 'RED' in confidence_upper or confidence_upper == '1':
+                                    confidence_level = 'RED'
+                                else:
+                                    confidence_level = 'UNKNOWN'
+                                    if total_panels_fetched <= 3:  # Only log for first few panels to avoid spam
+                                        logger.warning(f"Unknown UK confidence level: '{confidence_raw}' (type: {type(confidence_raw)}) for gene {gene_symbol}")
+                            else:
+                                confidence_level = 'UNKNOWN'
+                                if total_panels_fetched <= 3:
+                                    logger.warning(f"No confidence field found for UK gene {gene_symbol}")
+                            
+                            if gene_symbol:  # Only add if we have a gene symbol
+                                panels_data.append({
+                                    'panel_id': f"uk_{panel_id}",
+                                    'panel_name': formatted_name,
+                                    'source': 'panelapp_uk',
+                                    'gene_symbol': gene_symbol,
+                                    'gene_confidence': confidence_level,
+                                    'panel_version': panel_version,
+                                    'last_updated': datetime.now().isoformat(),
+                                    'panel_url': f"https://panelapp.genomicsengland.co.uk/panels/{panel_id}/"
+                                })
+                        
+                        # Log confidence level distribution for first few panels
+                        if total_panels_fetched <= 3:
+                            recent_entries = [p for p in panels_data if p['panel_id'] == f"uk_{panel_id}"]
+                            conf_counts = {}
+                            for entry in recent_entries:
+                                conf = entry['gene_confidence']
+                                conf_counts[conf] = conf_counts.get(conf, 0) + 1
+                            logger.info(f"UK Panel {panel_name} confidence distribution: {conf_counts}")
+                        
+                        # Add delay to be respectful to API
+                        time.sleep(0.3)  # Reduced delay for faster processing
+                        
+                    except Exception as e:
+                        logger.error(f"Error fetching UK panel {panel_id}: {e}")
+                        continue
+                
+                # Move to next page
+                url = next_url
+                page += 1
+                
+                # Log progress every 10 pages
+                if page % 10 == 0:
+                    logger.info(f"Processed {total_panels_fetched} panels so far...")
                     
         except Exception as e:
             logger.error(f"Error fetching PanelApp UK panels: {e}")
         
-        logger.info(f"Fetched {len(panels_data)} gene entries from PanelApp UK")
+        logger.info(f"Fetched {len(panels_data)} gene entries from {total_panels_fetched} PanelApp UK panels")
         return panels_data
     
     def fetch_panelapp_au_panels(self, max_panels=None):
-        """Fetch panels from PanelApp Australia"""
-        logger.info("Fetching panels from PanelApp Australia...")
+        """Fetch ALL panels from PanelApp Australia with pagination support"""
+        logger.info("Fetching ALL panels from PanelApp Australia with pagination...")
         panels_data = []
         
         try:
-            # Get list of panels
-            response = requests.get(f"{PANELAPP_AU_BASE_URL}/panels/", timeout=30)
-            response.raise_for_status()
-            panels_list = response.json()['results']
+            # Start with first page to get total count
+            url = f"{PANELAPP_AU_BASE_URL}/panels/"
+            page = 1
+            total_panels_fetched = 0
             
-            if max_panels:
-                panels_list = panels_list[:max_panels]
-            
-            for i, panel in enumerate(panels_list):
-                panel_id = str(panel['id'])
-                panel_name = panel['name']
-                panel_version = panel.get('version', '1.0')
+            while url:
+                logger.info(f"Fetching AU panels page {page}...")
+                response = requests.get(url, timeout=30)
+                response.raise_for_status()
+                data = response.json()
                 
-                logger.info(f"Fetching AU panel {i+1}/{len(panels_list)}: {panel_name}")
+                panels_list = data.get('results', [])
+                total_count = data.get('count', 0)
+                next_url = data.get('next')
                 
-                try:
-                    # Get detailed panel info with genes
-                    detail_response = requests.get(
-                        f"{PANELAPP_AU_BASE_URL}/panels/{panel_id}/",
-                        timeout=30
-                    )
-                    detail_response.raise_for_status()
-                    panel_detail = detail_response.json()
+                if page == 1:
+                    logger.info(f"Total panels available in PanelApp Australia: {total_count}")
+                
+                logger.info(f"Processing {len(panels_list)} panels from page {page}")
+                
+                for i, panel in enumerate(panels_list):
+                    panel_id = str(panel['id'])
+                    panel_name = panel['name']
+                    panel_version = panel.get('version', '1.0')
                     
-                    # Extract genes and count them
-                    genes = panel_detail.get('genes', [])
-                    gene_count = len(genes)
+                    total_panels_fetched += 1
+                    logger.info(f"Fetching AU panel {total_panels_fetched}/{total_count}: {panel_name}")
                     
-                    # Format panel name: "Panel Name Version X (Y genes)"
-                    formatted_name = f"{panel_name} Version {panel_version} ({gene_count} genes)"
-                    
-                    for gene in genes:
-                        gene_data = gene.get('gene_data', {})
-                        panels_data.append({
-                            'panel_id': f"au_{panel_id}",
-                            'panel_name': formatted_name,
-                            'source': 'panelapp_au',
-                            'gene_symbol': gene_data.get('gene_symbol', ''),
-                            'gene_confidence': gene.get('confidence_level', 'UNKNOWN'),
-                            'panel_version': panel_version,
-                            'last_updated': datetime.now().isoformat(),
-                            'panel_url': f"https://panelapp-aus.org/panels/{panel_id}/"
-                        })
-                    
-                    # Add delay to be respectful to API
-                    time.sleep(0.5)
-                    
-                except Exception as e:
-                    logger.error(f"Error fetching AU panel {panel_id}: {e}")
-                    continue
+                    try:
+                        # Get detailed panel info with genes
+                        detail_response = requests.get(
+                            f"{PANELAPP_AU_BASE_URL}/panels/{panel_id}/",
+                            timeout=30
+                        )
+                        detail_response.raise_for_status()
+                        panel_detail = detail_response.json()
+                        
+                        # Extract genes and count them
+                        genes = panel_detail.get('genes', [])
+                        gene_count = len(genes)
+                        
+                        # Debug: Log first few genes to understand structure
+                        if total_panels_fetched == 1 and genes:
+                            logger.info(f"Sample AU gene structure: {genes[0]}")
+                            # Log ALL fields to understand the structure
+                            logger.info(f"Sample AU gene ALL FIELDS: {json.dumps(genes[0], indent=2)}")
+                        
+                        # Format panel name: "Panel Name Version X (Y genes)"
+                        formatted_name = f"{panel_name} Version {panel_version} ({gene_count} genes)"
+                        
+                        for gene in genes:
+                            # DEBUG: Log the first few genes completely to understand structure
+                            if total_panels_fetched == 1 and len(panels_data) < 5:
+                                logger.info(f"DEBUG AU Gene: {json.dumps(gene, indent=2)}")
+                            
+                            # Parse gene data - try different possible field structures
+                            gene_data = gene.get('gene_data', {})
+                            gene_symbol = gene_data.get('gene_symbol', '') or gene_data.get('hgnc_symbol', '') or gene.get('gene_symbol', '')
+                            
+                            # Parse confidence level - ENHANCED DEBUG VERSION
+                            confidence_raw = None
+                            confidence_field = None
+                            
+                            # Try all possible confidence fields
+                            possible_fields = ['confidence_level', 'confidence', 'level_of_confidence', 'rating', 'gene_confidence']
+                            for field in possible_fields:
+                                if field in gene:
+                                    confidence_raw = gene[field]
+                                    confidence_field = field
+                                    break
+                                elif field in gene_data:
+                                    confidence_raw = gene_data[field]
+                                    confidence_field = f"gene_data.{field}"
+                                    break
+                            
+                            # Log what we found for debugging
+                            if total_panels_fetched == 1 and len(panels_data) < 5:
+                                logger.info(f"Gene {gene_symbol}: confidence_field='{confidence_field}', confidence_raw='{confidence_raw}'")
+                                logger.info(f"Available gene fields: {list(gene.keys())}")
+                                logger.info(f"Available gene_data fields: {list(gene_data.keys())}")
+                            
+                            # Normalize confidence values
+                            if confidence_raw:
+                                confidence_upper = str(confidence_raw).upper()
+                                if 'GREEN' in confidence_upper or confidence_upper == '3':
+                                    confidence_level = 'GREEN'
+                                elif 'AMBER' in confidence_upper or confidence_upper == '2':
+                                    confidence_level = 'AMBER'
+                                elif 'RED' in confidence_upper or confidence_upper == '1':
+                                    confidence_level = 'RED'
+                                else:
+                                    confidence_level = 'UNKNOWN'
+                                    if total_panels_fetched <= 3:  # Only log for first few panels to avoid spam
+                                        logger.warning(f"Unknown AU confidence level: '{confidence_raw}' (type: {type(confidence_raw)}) for gene {gene_symbol}")
+                            else:
+                                confidence_level = 'UNKNOWN'
+                                if total_panels_fetched <= 3:
+                                    logger.warning(f"No confidence field found for AU gene {gene_symbol}")
+                            
+                            if gene_symbol:  # Only add if we have a gene symbol
+                                panels_data.append({
+                                    'panel_id': f"au_{panel_id}",
+                                    'panel_name': formatted_name,
+                                    'source': 'panelapp_au',
+                                    'gene_symbol': gene_symbol,
+                                    'gene_confidence': confidence_level,
+                                    'panel_version': panel_version,
+                                    'last_updated': datetime.now().isoformat(),
+                                    'panel_url': f"https://panelapp-aus.org/panels/{panel_id}/"
+                                })
+                        
+                        # Log confidence level distribution for first few panels
+                        if total_panels_fetched <= 3:
+                            recent_entries = [p for p in panels_data if p['panel_id'] == f"au_{panel_id}"]
+                            conf_counts = {}
+                            for entry in recent_entries:
+                                conf = entry['gene_confidence']
+                                conf_counts[conf] = conf_counts.get(conf, 0) + 1
+                            logger.info(f"AU Panel {panel_name} confidence distribution: {conf_counts}")
+                        
+                        # Add delay to be respectful to API
+                        time.sleep(0.3)  # Reduced delay for faster processing
+                        
+                    except Exception as e:
+                        logger.error(f"Error fetching AU panel {panel_id}: {e}")
+                        continue
+                
+                # Move to next page
+                url = next_url
+                page += 1
+                
+                # Log progress every 10 pages  
+                if page % 10 == 0:
+                    logger.info(f"Processed {total_panels_fetched} panels so far...")
                     
         except Exception as e:
             logger.error(f"Error fetching PanelApp Australia panels: {e}")
         
-        logger.info(f"Fetched {len(panels_data)} gene entries from PanelApp Australia")
+        logger.info(f"Fetched {len(panels_data)} gene entries from {total_panels_fetched} PanelApp Australia panels")
         return panels_data
     
-    def update_all_panels(self, max_panels_per_source=50):
+    def update_all_panels(self, max_panels_per_source=None):
         """Update all panels from external sources and reload internal panels"""
         logger.info("Starting full panel update...")
         
@@ -297,11 +465,11 @@ class GenePanelManager:
         self._load_internal_panels_to_list(internal_panels_data)
         all_panels_data.extend(internal_panels_data)
         
-        # Fetch from PanelApp UK
+        # Fetch from PanelApp UK - GET ALL PANELS
         uk_panels = self.fetch_panelapp_uk_panels(max_panels_per_source)
         all_panels_data.extend(uk_panels)
         
-        # Fetch from PanelApp Australia
+        # Fetch from PanelApp Australia - GET ALL PANELS  
         au_panels = self.fetch_panelapp_au_panels(max_panels_per_source)
         all_panels_data.extend(au_panels)
         
@@ -309,6 +477,15 @@ class GenePanelManager:
         if all_panels_data:
             self.panels_df = pl.DataFrame(all_panels_data)
             self.save_panels()
+            
+            # Log overall confidence distribution - FIXED VERSION
+            if len(self.panels_df) > 0:
+                # Use manual counting instead of value_counts to avoid index issues
+                confidence_counts = {}
+                for _, row in self.panels_df.to_pandas().iterrows():
+                    conf = row['gene_confidence']
+                    confidence_counts[conf] = confidence_counts.get(conf, 0) + 1
+                logger.info(f"Overall confidence distribution: {confidence_counts}")
             
             # Update metadata
             self.metadata = {
@@ -354,7 +531,7 @@ class GenePanelManager:
                             'panel_name': panel_name,
                             'source': 'internal',
                             'gene_symbol': gene_symbol.strip(),
-                            'gene_confidence': 'GREEN',
+                            'gene_confidence': 'GREEN',  # Internal panels are all green
                             'panel_version': self._extract_version(panel_file.stem),
                             'last_updated': datetime.now().isoformat(),
                             'panel_url': ''
@@ -411,21 +588,15 @@ class GenePanelManager:
             logger.error(f"Error getting available panels: {e}")
             return []
     
-    def get_genes_for_panels(self, panel_ids, green_genes_only=False):
-        """Get gene list for selected panels with optional green gene filtering"""
+    def get_genes_for_panels(self, panel_ids):
+        """Get gene list for selected panels - SIMPLIFIED (no green gene filtering)"""
         if not panel_ids or len(self.panels_df) == 0:
             return []
         
         try:
-            df_filter = pl.col('panel_id').is_in(panel_ids)
-            
-            # Add green gene filter if requested
-            if green_genes_only:
-                df_filter = df_filter & (pl.col('gene_confidence') == 'GREEN')
-            
             genes = (
                 self.panels_df
-                .filter(df_filter)
+                .filter(pl.col('panel_id').is_in(panel_ids))
                 .select('gene_symbol')
                 .unique()
                 .to_pandas()['gene_symbol']
@@ -435,8 +606,7 @@ class GenePanelManager:
             # Remove empty strings and duplicates
             genes = list(set([g.strip() for g in genes if g and g.strip()]))
             
-            filter_text = " (green genes only)" if green_genes_only else ""
-            logger.info(f"Found {len(genes)} unique genes for {len(panel_ids)} panels{filter_text}")
+            logger.info(f"Found {len(genes)} unique genes for {len(panel_ids)} panels")
             return genes
             
         except Exception as e:
@@ -460,13 +630,30 @@ class GenePanelManager:
             if len(panel_data) > 0:
                 panel_info = panel_data.iloc[0].to_dict()
                 
-                # Get gene count and green gene count
+                # Get gene count and confidence distribution
                 panel_genes = self.panels_df.filter(pl.col('panel_id') == panel_id)
                 total_genes = len(panel_genes.select('gene_symbol').unique())
-                green_genes = len(panel_genes.filter(pl.col('gene_confidence') == 'GREEN').select('gene_symbol').unique())
+                
+                # Get confidence distribution - FIXED VERSION
+                confidence_counts = {}
+                for _, row in panel_genes.to_pandas().iterrows():
+                    conf = row['gene_confidence']
+                    confidence_counts[conf] = confidence_counts.get(conf, 0) + 1
+                
+                green_genes = confidence_counts.get('GREEN', 0)
+                amber_genes = confidence_counts.get('AMBER', 0) 
+                red_genes = confidence_counts.get('RED', 0)
+                unknown_genes = confidence_counts.get('UNKNOWN', 0)
                 
                 panel_info['gene_count'] = total_genes
                 panel_info['green_gene_count'] = green_genes
+                panel_info['amber_gene_count'] = amber_genes
+                panel_info['red_gene_count'] = red_genes
+                panel_info['unknown_gene_count'] = unknown_genes
+                panel_info['confidence_distribution'] = confidence_counts  # Use the fixed dict
+                
+                # Debug log for this specific panel
+                logger.info(f"Panel {panel_id} info: Total={total_genes}, Green={green_genes}, Amber={amber_genes}, Red={red_genes}, Unknown={unknown_genes}")
                 
                 return panel_info
             
@@ -532,7 +719,7 @@ def update_panels_if_needed():
     if panel_manager.should_update():
         logger.info("Panels need updating...")
         try:
-            panel_manager.update_all_panels(max_panels_per_source=30)
+            panel_manager.update_all_panels()  # REMOVED max_panels limit
         except Exception as e:
             logger.error(f"Error updating panels: {e}")
 
@@ -540,14 +727,41 @@ def get_available_panels():
     """Get available panels for UI"""
     return panel_manager.get_available_panels()
 
-def get_genes_for_panels(panel_ids, green_genes_only=False):
-    """Get genes for selected panels with optional green gene filtering"""
-    return panel_manager.get_genes_for_panels(panel_ids, green_genes_only)
+def get_genes_for_panels_optimized(panel_ids):
+    """OPTIMIZED: Get genes for selected panels - MUCH FASTER for large panels"""
+    if not panel_ids or len(panel_manager.panels_df) == 0:
+        return []
+    
+    try:
+        # OPTIMIZATION: Use Polars native operations for speed
+        genes = (
+            panel_manager.panels_df
+            .filter(pl.col('panel_id').is_in(panel_ids))
+            .select('gene_symbol')
+            .unique()
+            .to_series()
+            .to_list()
+        )
+        
+        # OPTIMIZATION: Use set operations for deduplication (faster than list comprehension)
+        genes_set = {g.strip() for g in genes if g and g.strip()}
+        unique_genes = list(genes_set)
+        
+        logger.info(f"OPTIMIZED: Found {len(unique_genes)} unique genes for {len(panel_ids)} panels")
+        return unique_genes
+        
+    except Exception as e:
+        logger.error(f"Error getting genes for panels: {e}")
+        return []
+
+def get_genes_for_panels(panel_ids):
+    """Get genes for selected panels - uses optimized version"""
+    return get_genes_for_panels_optimized(panel_ids)
 
 def get_panel_info(panel_id):
     """Get panel information"""
     return panel_manager.get_panel_info(panel_id)
 
 def force_update_panels():
-    """Force update all panels"""
-    panel_manager.update_all_panels()
+    """Force update all panels - GET ALL PANELS"""
+    panel_manager.update_all_panels()  # REMOVED max_panels limit

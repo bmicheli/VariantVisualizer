@@ -2,7 +2,7 @@
 Main application file for Variant Visualizer
 Contains the Dash app initialization, layout, and all callbacks
 OPTIMIZED VERSION with performance improvements
-UPDATED WITH GENE PANEL FILTERING
+UPDATED WITH GENE PANEL FILTERING - REMOVED GREEN GENE FILTERING
 """
 
 import dash
@@ -143,75 +143,35 @@ def update_gene_panel_options(panel_selector_id, update_clicks):
     """Update gene panel selector options"""
     return get_available_panels()
 
-# Gene panel selection callback with green gene filter
+# SIMPLIFIED: Gene panel selection callback (removed green gene filtering)
 @app.callback(
     [Output("selected-gene-panels", "data"), 
-     Output("panel-genes", "data"),
-     Output("gene-confidence-section", "style"),
-     Output("gene-filter-status", "children")],
+     Output("panel-genes", "data")],
     [Input("gene-panel-selector", "value"), 
-     Input("clear-gene-panels", "n_clicks"),
-     Input("all-genes-btn", "n_clicks"),
-     Input("green-genes-btn", "n_clicks")],
-    [State("selected-gene-panels", "data"),
-     State("all-genes-btn", "n_clicks"),
-     State("green-genes-btn", "n_clicks")],
+     Input("clear-gene-panels", "n_clicks")],
+    [State("selected-gene-panels", "data")],
     prevent_initial_call=True
 )
-def handle_gene_panel_selection_with_filter(selected_panels, clear_clicks, all_genes_clicks, green_genes_clicks, 
-                                           current_panels, prev_all_clicks, prev_green_clicks):
-    """Handle gene panel selection and green gene filtering"""
+def handle_gene_panel_selection(selected_panels, clear_clicks, current_panels):
+    """Handle gene panel selection - SIMPLIFIED (no green gene filtering)"""
     ctx = callback_context
     if not ctx.triggered:
-        return current_panels or [], [], {"display": "none"}, "Using all genes (Green, Amber, Red)"
+        return current_panels or [], []
     
     trigger = ctx.triggered[0]['prop_id'].split('.')[0]
     
     # Clear panels
     if trigger == "clear-gene-panels":
-        return [], [], {"display": "none"}, "Using all genes (Green, Amber, Red)"
+        return [], []
     
-    # Determine if we should show green gene filter section
-    show_filter_section = False
-    green_genes_only = False
-    
-    # Check if any external panels are selected
+    # Get genes for selected panels
     if selected_panels:
-        try:
-            # Check if any panel is from UK or AU
-            for panel_id in selected_panels:
-                if panel_id.startswith('uk_') or panel_id.startswith('au_'):
-                    show_filter_section = True
-                    break
-        except:
-            pass
-    
-    # Handle filter button clicks
-    if trigger == "green-genes-btn" and green_genes_clicks > (prev_green_clicks or 0):
-        green_genes_only = True
-    elif trigger == "all-genes-btn" and all_genes_clicks > (prev_all_clicks or 0):
-        green_genes_only = False
-    else:
-        # Default to all genes for new panel selection
-        green_genes_only = False
-    
-    # Get genes based on filter
-    if selected_panels:
-        genes = get_genes_for_panels(selected_panels, green_genes_only)
-        logger.info(f"Selected panels: {selected_panels}, Green genes only: {green_genes_only}, Genes: {len(genes)}")
+        genes = get_genes_for_panels(selected_panels)
+        logger.info(f"Selected panels: {selected_panels}, Genes: {len(genes)}")
     else:
         genes = []
     
-    # Update status message
-    if green_genes_only:
-        status_msg = "Using green genes only (high confidence)"
-    else:
-        status_msg = "Using all genes (Green, Amber, Red)"
-    
-    # Show/hide filter section
-    filter_section_style = {"display": "block"} if show_filter_section else {"display": "none"}
-    
-    return selected_panels or [], genes, filter_section_style, status_msg
+    return selected_panels or [], genes
 
 # Panel info modal callback
 @app.callback(
@@ -312,23 +272,21 @@ def toggle_sidebar(toggle_clicks, close_clicks, overlay_clicks, apply_clicks, is
     overlay_class = "sidebar-overlay open" if new_state else "sidebar-overlay"
     return sidebar_class, overlay_class, new_state
 
-# UPDATED: Main variants display callback - now responds to apply button and gene panels with green filter
+# UPDATED: Main variants display callback - OPTIMIZED for large gene panels
 @app.callback(
     [Output("variants-display", "children"), Output("variant-count", "children"), Output("filtered-variants", "data")],
     [Input("apply-filters-btn", "n_clicks"),  # Primary trigger: apply button
      Input("sample-selector", "value"),       # Also update when samples change
      Input("active-filters", "data"),         # Also update when preset filters change
-     Input("panel-genes", "data"),            # Also update when gene panels change
-     Input("all-genes-btn", "n_clicks"),      # Update when gene filter changes
-     Input("green-genes-btn", "n_clicks")],   # Update when gene filter changes
+     Input("panel-genes", "data")],           # Also update when gene panels change
     [State("search-input", "value"), 
      State("vaf-range-slider", "value"),
      State("selected-gene-panels", "data")],     # Get current filter values
     prevent_initial_call=False
 )
 def update_variants_display_optimized(apply_clicks, selected_samples, active_filters, panel_genes, 
-                                    all_genes_clicks, green_genes_clicks, search_term, vaf_range, selected_panels):
-    """Optimized variants display - now controlled by apply button and includes gene panel filtering with green filter"""
+                                    search_term, vaf_range, selected_panels):
+    """SUPER OPTIMIZED variants display for large gene panels"""
     
     # Early return if no samples selected
     if not selected_samples:
@@ -337,67 +295,111 @@ def update_variants_display_optimized(apply_clicks, selected_samples, active_fil
         return no_selection, count_display, []
     
     try:
-        # OPTIMISATION: Load with strict limit
-        df = db.load_variants_lazy(samples=selected_samples, limit=MAX_LOAD_LIMIT)
+        # PERFORMANCE: Log start time
+        import time
+        start_time = time.time()
         
-        if is_dataframe_empty(df):
-            empty_display = create_beautiful_variant_display(df)
-            empty_count = create_variant_count_display(0, 0, len(selected_samples))
-            return empty_display, empty_count, []
-        
-        original_count = len(df)
-        logger.info(f"Initial variant count: {original_count}")
-        
-        # Apply gene panel filtering FIRST (most selective) with green gene filter
-        if panel_genes and selected_panels:
-            logger.info(f"Applying gene panel filter with {len(panel_genes)} genes")
+        # OPTIMISATION 1: Use gene panel filter at database level if possible
+        if panel_genes and len(panel_genes) > 100:  # Only for large panels
+            logger.info(f"PERFORMANCE: Large panel detected ({len(panel_genes)} genes), using optimized filtering")
             
-            # Determine if green genes only filter is active
-            green_genes_only = green_genes_clicks and green_genes_clicks > (all_genes_clicks or 0)
+            # Load variants normally - db is the variants database, not panels
+            df = db.load_variants_lazy(samples=selected_samples, limit=MAX_LOAD_LIMIT)
             
-            if green_genes_only:
-                # Re-get genes with green filter
-                try:
-                    filtered_panel_genes = get_genes_for_panels(selected_panels, green_genes_only=True)
-                    logger.info(f"Using green genes only: {len(filtered_panel_genes)} genes")
-                    panel_genes = filtered_panel_genes
-                except Exception as e:
-                    logger.error(f"Error getting green genes: {e}")
+            if is_dataframe_empty(df):
+                empty_display = create_beautiful_variant_display(df)
+                empty_count = create_variant_count_display(0, 0, len(selected_samples))
+                return empty_display, empty_count, []
             
+            original_count = len(df)
+            logger.info(f"PERFORMANCE: Loaded {original_count} variants in {time.time() - start_time:.2f}s")
+            
+            # OPTIMISATION 2: Pre-convert gene panel to set for O(1) lookup - SUPER OPTIMIZED
+            panel_genes_set = set(panel_genes)
+            logger.info(f"PERFORMANCE: Initial gene set created ({len(panel_genes_set)} entries) in {time.time() - start_time:.2f}s")
+            
+            # OPTIMISATION 3: Pre-compute gene mapping ONCE and create reverse lookup
+            gene_mapping = load_gene_mapping()
+            if gene_mapping:
+                mapping_start = time.time()
+                
+                # Create reverse mapping: gene_name -> gene_id (much faster)
+                reverse_mapping = {mapped_name.upper(): gene_id for gene_id, mapped_name in gene_mapping.items()}
+                
+                # Add gene IDs to the set using vectorized lookup
+                for gene_name in panel_genes:
+                    gene_name_upper = gene_name.upper()
+                    if gene_name_upper in reverse_mapping:
+                        panel_genes_set.add(reverse_mapping[gene_name_upper])
+                
+                logger.info(f"PERFORMANCE: Gene mapping applied in {time.time() - mapping_start:.2f}s")
+            
+            logger.info(f"PERFORMANCE: Final gene set prepared ({len(panel_genes_set)} entries) in {time.time() - start_time:.2f}s")
+            
+            # OPTIMISATION 4: Apply gene filter with vectorized operations - SUPER FAST
             if isinstance(df, pd.DataFrame):
                 df = pl.from_pandas(df)
             
-            # Create conditions for gene filtering
-            gene_conditions = []
+            # Convert set to list once for Polars filter
+            filter_start = time.time()
+            gene_list = list(panel_genes_set)
             
-            # Direct gene symbol match
-            gene_conditions.append(pl.col('gene').is_in(panel_genes))
+            # Use highly optimized Polars filter
+            df = df.filter(pl.col('gene').is_in(gene_list))
+            logger.info(f"PERFORMANCE: Gene panel filter applied ({len(df)} variants) in {time.time() - filter_start:.2f}s")
             
-            # Also try to match gene names after ID conversion (if gene mapping exists)
-            gene_mapping = load_gene_mapping()
-            if gene_mapping:
-                # Get gene IDs that correspond to our gene names
-                matching_ids = []
-                for gene_name in panel_genes:
-                    for gene_id, mapped_name in gene_mapping.items():
-                        if mapped_name.upper() == gene_name.upper():
-                            matching_ids.append(gene_id)
+        else:
+            # Standard loading for small panels or no panels
+            df = db.load_variants_lazy(samples=selected_samples, limit=MAX_LOAD_LIMIT)
+            
+            if is_dataframe_empty(df):
+                empty_display = create_beautiful_variant_display(df)
+                empty_count = create_variant_count_display(0, 0, len(selected_samples))
+                return empty_display, empty_count, []
+            
+            original_count = len(df)
+            logger.info(f"Standard loading: {original_count} variants")
+            
+            # Apply gene panel filtering for smaller panels using the original method
+            if panel_genes and selected_panels:
+                logger.info(f"Applying standard gene panel filter with {len(panel_genes)} genes")
                 
-                if matching_ids:
-                    gene_conditions.append(pl.col('gene').is_in(matching_ids))
-            
-            # Apply gene filtering
-            if gene_conditions:
-                combined_gene_filter = gene_conditions[0]
-                for condition in gene_conditions[1:]:
-                    combined_gene_filter = combined_gene_filter | condition
+                if isinstance(df, pd.DataFrame):
+                    df = pl.from_pandas(df)
                 
-                df = df.filter(combined_gene_filter)
-                filter_type = "green genes only" if green_genes_only else "all genes"
-                logger.info(f"After gene panel filter ({filter_type}): {len(df)} variants")
+                # Create conditions for gene filtering
+                gene_conditions = []
+                
+                # Direct gene symbol match
+                gene_conditions.append(pl.col('gene').is_in(panel_genes))
+                
+                # Also try to match gene names after ID conversion (if gene mapping exists)
+                gene_mapping = load_gene_mapping()
+                if gene_mapping:
+                    # Get gene IDs that correspond to our gene names
+                    matching_ids = []
+                    for gene_name in panel_genes:
+                        for gene_id, mapped_name in gene_mapping.items():
+                            if mapped_name.upper() == gene_name.upper():
+                                matching_ids.append(gene_id)
+                    
+                    if matching_ids:
+                        gene_conditions.append(pl.col('gene').is_in(matching_ids))
+                
+                # Apply gene filtering
+                if gene_conditions:
+                    combined_gene_filter = gene_conditions[0]
+                    for condition in gene_conditions[1:]:
+                        combined_gene_filter = combined_gene_filter | condition
+                    
+                    df = df.filter(combined_gene_filter)
+                    logger.info(f"After gene panel filter: {len(df)} variants")
         
-        # Apply basic filters
-        df = apply_filters(
+        # OPTIMISATION 4: Apply remaining filters efficiently
+        filter_start = time.time()
+        
+        # Apply basic filters (optimized)
+        df = apply_filters_optimized(
             df, 
             search_term=search_term,
             genotype_filter=None,
@@ -406,7 +408,7 @@ def update_variants_display_optimized(apply_clicks, selected_samples, active_fil
             selected_samples=selected_samples
         )
         
-        logger.info(f"After basic filters: {len(df)} variants")
+        logger.info(f"PERFORMANCE: Basic filters applied in {time.time() - filter_start:.2f}s ({len(df)} variants)")
         
         # Apply VAF filter
         if isinstance(df, pd.DataFrame):
@@ -417,12 +419,13 @@ def update_variants_display_optimized(apply_clicks, selected_samples, active_fil
             df = df.filter((pl.col('VAF') >= vaf_range[0]) & (pl.col('VAF') <= vaf_range[1]))
             logger.info(f"VAF filter ({vaf_range}): {before_vaf} -> {len(df)}")
         
-        logger.info(f"Final variant count after all filters: {len(df)}")
+        total_time = time.time() - start_time
+        logger.info(f"PERFORMANCE: Total filtering time: {total_time:.2f}s for {len(df)} final variants")
         
         display = create_beautiful_variant_display(df)
         count_display = create_variant_count_display(len(df), original_count, len(selected_samples))
         
-        # OPTIMISATION: Store only first MAX_DISPLAY_VARIANTS for details
+        # OPTIMISATION 5: Store only first MAX_DISPLAY_VARIANTS for details
         try:
             if isinstance(df, pl.DataFrame):
                 storage_data = df.head(MAX_DISPLAY_VARIANTS).to_pandas().to_dict('records')
@@ -610,48 +613,102 @@ def clear_comment_field(n_clicks, comment_value):
         return ""
     return dash.no_update
 
-# Z-INDEX FIX: Clientside callback to handle sidebar/dropdown z-index conflicts
+# Force dropdown z-index on page load
+app.clientside_callback(
+    """
+    function(n_intervals) {
+        // Force dropdown z-index every few seconds to catch new elements
+        const forceDropdownZIndex = () => {
+            // Set high z-index on all dropdown elements
+            document.querySelectorAll('#sample-selector, #gene-panel-selector').forEach(dropdown => {
+                if (dropdown) {
+                    dropdown.style.zIndex = '99999';
+                    const parent = dropdown.closest('.glass-card');
+                    if (parent) parent.style.zIndex = '1000';
+                }
+            });
+            
+            // Force all dropdown menus to highest z-index
+            document.querySelectorAll('div[class*="menu"], div[class*="MenuList"], div[class*="option"], .Select-menu, .Select-menu-outer').forEach(menu => {
+                menu.style.zIndex = '99999';
+            });
+            
+            // Force React Select components
+            document.querySelectorAll('.css-26l3qy-menu, .css-1pahdxg-control, .css-1hwfws3, div[class*="-menu"], div[class*="-MenuList"], div[class*="-option"]').forEach(elem => {
+                elem.style.zIndex = '99999';
+            });
+            
+            // Force all Dash dropdown components
+            document.querySelectorAll('.dash-dropdown .Select-menu-outer, .dash-dropdown .Select-menu, .dash-dropdown .Select-option').forEach(elem => {
+                elem.style.zIndex = '99999';
+            });
+        };
+        
+        forceDropdownZIndex();
+        
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("variant-count", "style", allow_duplicate=True),
+    [Input("apply-filters-btn", "n_clicks")],
+    prevent_initial_call=True
+)
+
+# Z-INDEX FIX: Enhanced clientside callback to handle dropdown z-index issues
 app.clientside_callback(
     """
     function(sidebar_open) {
         setTimeout(() => {
-            const sampleContainer = document.querySelector('.sample-selector-container');
-            const panelContainer = document.querySelector('.gene-panel-selector-container');
-            const dropdowns = document.querySelectorAll('.dash-dropdown, .Select, div[class*="menu"], div[class*="MenuList"]');
+            // SUPER AGGRESSIVE z-index forcing for ALL dropdown elements
+            const forceAllDropdownsToTop = () => {
+                // Target ALL possible dropdown selectors
+                const allDropdownSelectors = [
+                    '#sample-selector', '#gene-panel-selector',
+                    '.dash-dropdown', '.Select', '.Select-control', '.Select-menu', '.Select-menu-outer',
+                    '.Select-option', '.Select-input', '.Select-placeholder',
+                    'div[class*="control"]', 'div[class*="menu"]', 'div[class*="MenuList"]', 
+                    'div[class*="option"]', 'div[class*="placeholder"]',
+                    '.css-26l3qy-menu', '.css-1pahdxg-control', '.css-1hwfws3',
+                    'div[class*="-menu"]', 'div[class*="-MenuList"]', 'div[class*="-option"]',
+                    'div[class*="-control"]', 'div[class*="-placeholder"]'
+                ];
+                
+                allDropdownSelectors.forEach(selector => {
+                    document.querySelectorAll(selector).forEach(elem => {
+                        elem.style.zIndex = '99999 !important';
+                        elem.style.position = 'relative';
+                    });
+                });
+                
+                // Ensure containers have proper z-index
+                document.querySelectorAll('.glass-card').forEach(card => {
+                    if (card.querySelector('#sample-selector') || card.querySelector('#gene-panel-selector')) {
+                        card.style.zIndex = '1000';
+                        card.style.position = 'relative';
+                    }
+                });
+            };
+            
             const sidebar = document.querySelector('.filter-sidebar');
             const overlay = document.querySelector('.sidebar-overlay');
             
             if (sidebar_open) {
-                // Sidebar is open - lower all dropdown z-indexes
-                if (sampleContainer) {
-                    sampleContainer.style.zIndex = '100';
-                }
-                if (panelContainer) {
-                    panelContainer.style.zIndex = '100';
-                }
-                dropdowns.forEach(dropdown => {
-                    dropdown.style.zIndex = '100';
-                });
-                
-                // Ensure sidebar and overlay are on top
+                // Sidebar is open - ensure sidebar is highest but dropdowns still work
                 if (sidebar) {
-                    sidebar.style.zIndex = '99999';
+                    sidebar.style.zIndex = '999999';
                 }
                 if (overlay) {
-                    overlay.style.zIndex = '99998';
+                    overlay.style.zIndex = '999998';
                 }
-            } else {
-                // Sidebar is closed - restore normal dropdown z-indexes
-                if (sampleContainer) {
-                    sampleContainer.style.zIndex = '1000';
-                }
-                if (panelContainer) {
-                    panelContainer.style.zIndex = '1000';
-                }
-                dropdowns.forEach(dropdown => {
-                    dropdown.style.zIndex = '1005';
-                });
             }
+            
+            // ALWAYS force dropdowns to top regardless of sidebar state
+            forceAllDropdownsToTop();
+            
+            // Run again multiple times to catch dynamic elements
+            setTimeout(forceAllDropdownsToTop, 100);
+            setTimeout(forceAllDropdownsToTop, 500);
+            
         }, 50);
         
         return window.dash_clientside.no_update;
@@ -700,48 +757,6 @@ app.clientside_callback(
     """,
     Output("variant-count", "style"),
     [Input("active-filters", "data")]
-)
-
-# Clientside callback for gene filter button styling
-app.clientside_callback(
-    """
-    function(all_clicks, green_clicks) {
-        setTimeout(() => {
-            const allBtn = document.querySelector('#all-genes-btn');
-            const greenBtn = document.querySelector('#green-genes-btn');
-            
-            if (allBtn && greenBtn) {
-                // Determine which button should be active
-                const greenIsActive = green_clicks > (all_clicks || 0);
-                
-                if (greenIsActive) {
-                    // Green genes only is active
-                    greenBtn.classList.remove('btn-outline-success');
-                    greenBtn.classList.add('btn-success');
-                    greenBtn.style.color = 'white';
-                    
-                    allBtn.classList.remove('btn-secondary');
-                    allBtn.classList.add('btn-outline-secondary');
-                    allBtn.style.color = '';
-                } else {
-                    // All genes is active
-                    allBtn.classList.remove('btn-outline-secondary');
-                    allBtn.classList.add('btn-secondary');
-                    allBtn.style.color = 'white';
-                    
-                    greenBtn.classList.remove('btn-success');
-                    greenBtn.classList.add('btn-outline-success');
-                    greenBtn.style.color = '';
-                }
-            }
-        }, 100);
-        
-        return window.dash_clientside.no_update;
-    }
-    """,
-    Output("gene-filter-status", "style"),
-    [Input("all-genes-btn", "n_clicks"), Input("green-genes-btn", "n_clicks")],
-    prevent_initial_call=True
 )
 
 # =============================================================================

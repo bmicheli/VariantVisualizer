@@ -3,6 +3,7 @@ Utility functions for Variant Visualizer
 Contains badge creation, filtering, and data processing functions
 UPDATED WITH GENE NAME MAPPING AND OMIM LINKS - HANDLES MULTIPLE GENES
 UPDATED WITH LARGER FONTS FOR BETTER READABILITY
+SIMPLIFIED: REMOVED GREEN GENE FILTERING FROM APPLY_FILTERS
 """
 
 import dash_bootstrap_components as dbc
@@ -16,7 +17,7 @@ from config import *
 _gene_mapping = None
 
 def load_gene_mapping():
-    """Load HGNC ID to gene name mapping from file"""
+    """Load HGNC ID to gene name mapping from file - OPTIMIZED VERSION"""
     global _gene_mapping
     
     if _gene_mapping is not None:
@@ -26,11 +27,24 @@ def load_gene_mapping():
     
     try:
         if os.path.exists(gene_mapping_file):
-            # Load the mapping file
-            mapping_df = pd.read_csv(gene_mapping_file, sep='\t')
-            # Create dictionary mapping HGNC_ID to HGNC_symbol
-            _gene_mapping = dict(zip(mapping_df['HGNC_ID'].astype(str), mapping_df['HGNC_symbol']))
-            logger.info(f"Loaded {len(_gene_mapping)} gene mappings from {gene_mapping_file}")
+            import time
+            start_time = time.time()
+            
+            # OPTIMIZATION: Use Polars for faster loading if file is large
+            try:
+                import polars as pl
+                mapping_df = pl.read_csv(gene_mapping_file, separator='\t')
+                # Convert to dictionary efficiently
+                _gene_mapping = dict(zip(
+                    mapping_df['HGNC_ID'].cast(pl.Utf8).to_list(),
+                    mapping_df['HGNC_symbol'].to_list()
+                ))
+                logger.info(f"Loaded {len(_gene_mapping)} gene mappings with Polars in {time.time() - start_time:.2f}s")
+            except Exception:
+                # Fallback to pandas if Polars fails
+                mapping_df = pd.read_csv(gene_mapping_file, sep='\t')
+                _gene_mapping = dict(zip(mapping_df['HGNC_ID'].astype(str), mapping_df['HGNC_symbol']))
+                logger.info(f"Loaded {len(_gene_mapping)} gene mappings with Pandas in {time.time() - start_time:.2f}s")
         else:
             logger.warning(f"Gene mapping file not found: {gene_mapping_file}")
             _gene_mapping = {}
@@ -158,19 +172,19 @@ def debug_search_data(df, search_term="BRCA1"):
     
     print(f"\nSample gene values in data: {unique_genes}")
 
-def apply_filters_with_debug(df, search_term=None, genotype_filter=None, chromosome_filter=None, 
-                            active_filters=None, selected_samples=None):
-    """Apply filters with extensive debugging - USE THIS VERSION"""
+def apply_filters_optimized(df, search_term=None, genotype_filter=None, chromosome_filter=None, 
+                          active_filters=None, selected_samples=None):
+    """OPTIMIZED apply filters for large datasets - MUCH FASTER"""
     
     if len(df) == 0:
         logger.info("Input DataFrame is empty")
         return df
     
-    # Convert to Polars if it's pandas
+    # Convert to Polars if it's pandas for faster operations
     if isinstance(df, pd.DataFrame):
         df = pl.from_pandas(df)
     
-    logger.info(f"Starting with {len(df)} variants")
+    logger.info(f"Starting optimized filtering with {len(df)} variants")
     
     # Sample filter (most selective first)
     if selected_samples:
@@ -192,65 +206,42 @@ def apply_filters_with_debug(df, search_term=None, genotype_filter=None, chromos
             df = df.filter(pl.col('GT').is_in(['0/0', '0|0']))
         logger.info(f"After genotype filter: {len(df)} variants")
     
-    # SEARCH FILTER WITH EXTENSIVE DEBUGGING
+    # OPTIMIZED SEARCH FILTER - Much faster for large datasets
     if search_term and search_term.strip():
         search_lower = search_term.strip().lower()
-        logger.info(f"=== SEARCH DEBUG: Applying search filter: '{search_term}' ===")
-        
-        # Debug: Show sample of data we're searching in
-        if len(df) > 0:
-            sample_genes = df.select('gene').limit(5).to_pandas()['gene'].tolist()
-            sample_chroms = df.select('CHROM').limit(5).to_pandas()['CHROM'].tolist()
-            logger.info(f"Sample gene values: {sample_genes}")
-            logger.info(f"Sample CHROM values: {sample_chroms}")
+        logger.info(f"Applying OPTIMIZED search filter: '{search_term}'")
         
         search_conditions = []
-        results_per_condition = []
         
-        # Test each search condition individually for debugging
-        
-        # 1. Sample search
+        # OPTIMIZATION: Use vectorized string operations
         try:
-            sample_matches = len(df.filter(pl.col('SAMPLE').str.to_lowercase().str.contains(search_lower)))
+            # Sample search - vectorized
             search_conditions.append(pl.col('SAMPLE').str.to_lowercase().str.contains(search_lower))
-            results_per_condition.append(('SAMPLE', sample_matches))
-            logger.info(f"SAMPLE search matches: {sample_matches}")
         except Exception as e:
-            logger.error(f"SAMPLE search error: {e}")
+            logger.error(f"Sample search error: {e}")
         
-        # 2. Consequence search
+        # Consequence search - vectorized
         try:
-            consequence_matches = len(df.filter(pl.col('consequence').str.to_lowercase().str.contains(search_lower)))
             search_conditions.append(pl.col('consequence').str.to_lowercase().str.contains(search_lower))
-            results_per_condition.append(('consequence', consequence_matches))
-            logger.info(f"Consequence search matches: {consequence_matches}")
         except Exception as e:
             logger.error(f"Consequence search error: {e}")
         
-        # 3. Chromosome search
+        # Chromosome search - optimized
         try:
             chrom_search = search_lower.replace('chr', '').replace('chromosome', '').strip()
             if chrom_search:
-                chrom_exact = len(df.filter(pl.col('CHROM').str.to_lowercase() == chrom_search))
-                chrom_contains = len(df.filter(pl.col('CHROM').str.to_lowercase().str.contains(chrom_search)))
-                
                 search_conditions.extend([
                     pl.col('CHROM').str.to_lowercase() == chrom_search,
                     pl.col('CHROM').str.to_lowercase().str.contains(chrom_search)
                 ])
-                results_per_condition.extend([('CHROM_exact', chrom_exact), ('CHROM_contains', chrom_contains)])
-                logger.info(f"Chromosome search - exact: {chrom_exact}, contains: {chrom_contains}")
         except Exception as e:
             logger.error(f"Chromosome search error: {e}")
         
-        # 4. Position search
+        # Position search - optimized
         try:
             if search_term.isdigit():
                 pos_value = int(search_term)
-                pos_matches = len(df.filter(pl.col('POS') == pos_value))
                 search_conditions.append(pl.col('POS') == pos_value)
-                results_per_condition.append(('POS', pos_matches))
-                logger.info(f"Position search matches: {pos_matches}")
             
             # Handle chr:pos format
             if ':' in search_term:
@@ -260,73 +251,35 @@ def apply_filters_with_debug(df, search_term=None, genotype_filter=None, chromos
                     pos_part = parts[1].strip()
                     if pos_part.isdigit():
                         pos_value = int(pos_part)
-                        chrpos_matches = len(df.filter(
-                            (pl.col('CHROM').str.to_lowercase() == chrom_part) & 
-                            (pl.col('POS') == pos_value)
-                        ))
                         search_conditions.append(
                             (pl.col('CHROM').str.to_lowercase() == chrom_part) & 
                             (pl.col('POS') == pos_value)
                         )
-                        results_per_condition.append(('chr:pos', chrpos_matches))
-                        logger.info(f"Chr:pos search matches: {chrpos_matches}")
         except Exception as e:
             logger.error(f"Position search error: {e}")
         
-        # 5. Gene search (the main issue)
+        # OPTIMIZED Gene search - Pre-compute gene sets for faster lookup
         try:
             # Direct gene field search
-            gene_direct = len(df.filter(pl.col('gene').str.to_lowercase().str.contains(search_lower)))
             search_conditions.append(pl.col('gene').str.to_lowercase().str.contains(search_lower))
-            results_per_condition.append(('gene_direct', gene_direct))
-            logger.info(f"Direct gene search matches: {gene_direct}")
             
-            # Gene mapping search
+            # OPTIMIZATION: Pre-compute gene mapping once
             gene_mapping = load_gene_mapping()
             if gene_mapping:
                 matching_gene_ids, matching_gene_names = find_genes_by_search_term(search_term)
-                logger.info(f"Gene mapping search: {len(matching_gene_ids)} IDs, {len(matching_gene_names)} names")
                 
                 if matching_gene_ids:
-                    # Test exact ID matches
-                    id_exact = len(df.filter(pl.col('gene').is_in(matching_gene_ids)))
                     search_conditions.append(pl.col('gene').is_in(matching_gene_ids))
-                    results_per_condition.append(('gene_id_exact', id_exact))
-                    logger.info(f"Gene ID exact matches: {id_exact}")
                     
-                    # Test contains for each ID
-                    for i, gene_id in enumerate(matching_gene_ids[:3]):  # Test first 3
-                        id_contains = len(df.filter(pl.col('gene').str.contains(gene_id)))
-                        search_conditions.append(pl.col('gene').str.contains(gene_id))
-                        results_per_condition.append((f'gene_id_contains_{i}', id_contains))
-                        logger.info(f"Gene ID '{gene_id}' contains matches: {id_contains}")
-                
                 if matching_gene_names:
-                    # Test exact name matches
-                    name_exact = len(df.filter(pl.col('gene').is_in(matching_gene_names)))
                     search_conditions.append(pl.col('gene').is_in(matching_gene_names))
-                    results_per_condition.append(('gene_name_exact', name_exact))
-                    logger.info(f"Gene name exact matches: {name_exact}")
                     
-                    # Test contains for each name
-                    for i, gene_name in enumerate(matching_gene_names[:3]):  # Test first 3
-                        name_contains = len(df.filter(pl.col('gene').str.contains(gene_name)))
-                        search_conditions.append(pl.col('gene').str.contains(gene_name))
-                        results_per_condition.append((f'gene_name_contains_{i}', name_contains))
-                        logger.info(f"Gene name '{gene_name}' contains matches: {name_contains}")
-            else:
-                logger.warning("No gene mapping loaded for search")
-                
         except Exception as e:
             logger.error(f"Gene search error: {e}")
         
-        # Log all search results
-        logger.info("=== SEARCH RESULTS SUMMARY ===")
-        for condition_name, matches in results_per_condition:
-            logger.info(f"  {condition_name}: {matches} matches")
-        
-        # Apply combined search if we have conditions
+        # Apply combined search if we have conditions - OPTIMIZED
         if search_conditions:
+            # OPTIMIZATION: Combine conditions efficiently
             combined_search = search_conditions[0]
             for condition in search_conditions[1:]:
                 combined_search = combined_search | condition
@@ -335,11 +288,11 @@ def apply_filters_with_debug(df, search_term=None, genotype_filter=None, chromos
             df = df.filter(combined_search)
             df_after = len(df)
             
-            logger.info(f"=== FINAL SEARCH RESULT: {df_before} -> {df_after} variants ===")
+            logger.info(f"OPTIMIZED search filter result: {df_before} -> {df_after} variants")
         else:
             logger.warning(f"No valid search conditions generated for: '{search_term}'")
     
-    # Preset filters
+    # OPTIMIZED Preset filters - Use vectorized operations
     if active_filters:
         if active_filters.get('high_impact'):
             high_impact = ['frameshift_variant', 'stop_gained', 'stopgain', 'stop_lost']
@@ -358,11 +311,15 @@ def apply_filters_with_debug(df, search_term=None, genotype_filter=None, chromos
             df = df.filter(pl.col('GT').is_in(['1/1', '1|1', '0/0', '0|0']))
             logger.info(f"After homozygous filter: {len(df)} variants")
     
-    logger.info(f"Final result: {len(df)} variants")
+    logger.info(f"OPTIMIZED filtering complete: {len(df)} variants")
     return df
 
-# UPDATE your apply_filters function to use the debug version temporarily
-apply_filters = apply_filters_with_debug
+# Keep the original function for backward compatibility
+def apply_filters(df, search_term=None, genotype_filter=None, chromosome_filter=None, 
+                 active_filters=None, selected_samples=None, panel_genes=None):
+    """Apply filters - SIMPLIFIED (removed green gene specific logic)"""
+    return apply_filters_optimized(df, search_term, genotype_filter, chromosome_filter, 
+                                 active_filters, selected_samples)
 
 def create_gene_link(gene_id_or_name):
     """Create clickable gene name(s) with OMIM links - handles multiple genes with deduplication - LARGER FONTS"""
@@ -771,184 +728,3 @@ def create_summary_stats(df):
     }
     
     return stats
-
-
-def apply_filters_with_gene_panels(df, search_term=None, genotype_filter=None, chromosome_filter=None, 
-                                  active_filters=None, selected_samples=None, panel_genes=None):
-    """Apply filters with gene panel support and extensive debugging"""
-    
-    if len(df) == 0:
-        logger.info("Input DataFrame is empty")
-        return df
-    
-    # Convert to Polars if it's pandas
-    if isinstance(df, pd.DataFrame):
-        df = pl.from_pandas(df)
-    
-    logger.info(f"Starting with {len(df)} variants")
-    
-    # Sample filter (most selective first)
-    if selected_samples:
-        df = df.filter(pl.col('SAMPLE').is_in(selected_samples))
-        logger.info(f"After sample filter: {len(df)} variants")
-    
-    # Gene panel filter (very selective, apply early)
-    if panel_genes and len(panel_genes) > 0:
-        logger.info(f"Applying gene panel filter with {len(panel_genes)} genes: {panel_genes[:5]}...")
-        
-        gene_conditions = []
-        
-        # Direct gene symbol match
-        direct_matches = len(df.filter(pl.col('gene').is_in(panel_genes)))
-        gene_conditions.append(pl.col('gene').is_in(panel_genes))
-        logger.info(f"Direct gene matches: {direct_matches}")
-        
-        # Try gene mapping if available
-        gene_mapping = load_gene_mapping()
-        if gene_mapping:
-            # Get gene IDs that correspond to our gene names
-            matching_ids = []
-            for gene_name in panel_genes:
-                for gene_id, mapped_name in gene_mapping.items():
-                    if mapped_name.upper() == gene_name.upper():
-                        matching_ids.append(gene_id)
-            
-            if matching_ids:
-                id_matches = len(df.filter(pl.col('gene').is_in(matching_ids)))
-                gene_conditions.append(pl.col('gene').is_in(matching_ids))
-                logger.info(f"Gene ID matches: {id_matches} for {len(matching_ids)} IDs")
-        
-        # Apply combined gene filter
-        if gene_conditions:
-            combined_gene_filter = gene_conditions[0]
-            for condition in gene_conditions[1:]:
-                combined_gene_filter = combined_gene_filter | condition
-            
-            before_gene_filter = len(df)
-            df = df.filter(combined_gene_filter)
-            after_gene_filter = len(df)
-            logger.info(f"Gene panel filter: {before_gene_filter} -> {after_gene_filter} variants")
-    
-    # Chromosome filter
-    if chromosome_filter and chromosome_filter != "all":
-        df = df.filter(pl.col('CHROM') == chromosome_filter)
-        logger.info(f"After chromosome filter: {len(df)} variants")
-    
-    # Genotype filter
-    if genotype_filter and genotype_filter != "all":
-        if genotype_filter == "het":
-            df = df.filter(pl.col('GT').is_in(['0/1', '1/0', '0|1', '1|0']))
-        elif genotype_filter == "hom_alt":
-            df = df.filter(pl.col('GT').is_in(['1/1', '1|1']))
-        elif genotype_filter == "hom_ref":
-            df = df.filter(pl.col('GT').is_in(['0/0', '0|0']))
-        logger.info(f"After genotype filter: {len(df)} variants")
-    
-    # SEARCH FILTER (existing logic)
-    if search_term and search_term.strip():
-        search_lower = search_term.strip().lower()
-        logger.info(f"Applying search filter: '{search_term}'")
-        
-        search_conditions = []
-        
-        # Sample search
-        try:
-            search_conditions.append(pl.col('SAMPLE').str.to_lowercase().str.contains(search_lower))
-        except Exception as e:
-            logger.error(f"Sample search error: {e}")
-        
-        # Consequence search
-        try:
-            search_conditions.append(pl.col('consequence').str.to_lowercase().str.contains(search_lower))
-        except Exception as e:
-            logger.error(f"Consequence search error: {e}")
-        
-        # Chromosome search
-        try:
-            chrom_search = search_lower.replace('chr', '').replace('chromosome', '').strip()
-            if chrom_search:
-                search_conditions.extend([
-                    pl.col('CHROM').str.to_lowercase() == chrom_search,
-                    pl.col('CHROM').str.to_lowercase().str.contains(chrom_search)
-                ])
-        except Exception as e:
-            logger.error(f"Chromosome search error: {e}")
-        
-        # Position search
-        try:
-            if search_term.isdigit():
-                pos_value = int(search_term)
-                search_conditions.append(pl.col('POS') == pos_value)
-            
-            # Handle chr:pos format
-            if ':' in search_term:
-                parts = search_term.split(':')
-                if len(parts) >= 2:
-                    chrom_part = parts[0].replace('chr', '').strip().lower()
-                    pos_part = parts[1].strip()
-                    if pos_part.isdigit():
-                        pos_value = int(pos_part)
-                        search_conditions.append(
-                            (pl.col('CHROM').str.to_lowercase() == chrom_part) & 
-                            (pl.col('POS') == pos_value)
-                        )
-        except Exception as e:
-            logger.error(f"Position search error: {e}")
-        
-        # Gene search
-        try:
-            # Direct gene field search
-            search_conditions.append(pl.col('gene').str.to_lowercase().str.contains(search_lower))
-            
-            # Gene mapping search
-            gene_mapping = load_gene_mapping()
-            if gene_mapping:
-                matching_gene_ids, matching_gene_names = find_genes_by_search_term(search_term)
-                
-                if matching_gene_ids:
-                    search_conditions.append(pl.col('gene').is_in(matching_gene_ids))
-                    
-                if matching_gene_names:
-                    search_conditions.append(pl.col('gene').is_in(matching_gene_names))
-                    
-        except Exception as e:
-            logger.error(f"Gene search error: {e}")
-        
-        # Apply combined search if we have conditions
-        if search_conditions:
-            combined_search = search_conditions[0]
-            for condition in search_conditions[1:]:
-                combined_search = combined_search | condition
-            
-            df_before = len(df)
-            df = df.filter(combined_search)
-            df_after = len(df)
-            
-            logger.info(f"Search filter result: {df_before} -> {df_after} variants")
-        else:
-            logger.warning(f"No valid search conditions generated for: '{search_term}'")
-    
-    # Preset filters
-    if active_filters:
-        if active_filters.get('high_impact'):
-            high_impact = ['frameshift_variant', 'stop_gained', 'stopgain', 'stop_lost']
-            df = df.filter(pl.col('consequence').is_in(high_impact))
-            logger.info(f"After high_impact filter: {len(df)} variants")
-        
-        if active_filters.get('pathogenic'):
-            df = df.filter(pl.col('clinvar_sig').is_in(['Pathogenic', 'Likely pathogenic']))
-            logger.info(f"After pathogenic filter: {len(df)} variants")
-        
-        if active_filters.get('heterozygous'):
-            df = df.filter(pl.col('GT').is_in(['0/1', '1/0', '0|1', '1|0']))
-            logger.info(f"After heterozygous filter: {len(df)} variants")
-        
-        if active_filters.get('homozygous'):
-            df = df.filter(pl.col('GT').is_in(['1/1', '1|1', '0/0', '0|0']))
-            logger.info(f"After homozygous filter: {len(df)} variants")
-    
-    logger.info(f"Final result: {len(df)} variants")
-    return df
-
-# Update the global apply_filters function to use the new version
-apply_filters = apply_filters_with_gene_panels
