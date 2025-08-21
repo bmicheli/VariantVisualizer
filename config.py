@@ -2,6 +2,7 @@
 Configuration file for Variant Visualizer
 Contains all constants, paths, and configuration settings
 OPTIMIZED VERSION with performance improvements
+UPDATED WITH LARGER FONTS FOR BETTER READABILITY
 """
 
 import os
@@ -33,7 +34,7 @@ MAX_DISPLAY_VARIANTS = 20
 
 # OPTIMISATION: Maximum variants to load at once  
 # RÉDUIT de 50000 à 1000 pour améliorer la réactivité
-MAX_LOAD_LIMIT = 1000
+MAX_LOAD_LIMIT = 5000
 
 # Default chunk size for processing
 DEFAULT_CHUNK_SIZE = 10000
@@ -119,7 +120,7 @@ EXTERNAL_STYLESHEETS = [
 ]
 
 # =============================================================================
-# CSS STYLES - AVEC OPTIMISATIONS DE PERFORMANCE
+# CSS STYLES - AVEC OPTIMISATIONS DE PERFORMANCE ET POLICES HARMONISÉES
 # =============================================================================
 
 CUSTOM_CSS = '''
@@ -129,6 +130,7 @@ body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
     padding: 0;
+    font-size: 15px !important;  /* TAILLE DE BASE AUGMENTÉE */
 }
 
 .glass-card {
@@ -230,7 +232,7 @@ div[class*="-option"] {
     z-index: 100 !important;
 }
 
-/* OPTIMISATIONS DE PERFORMANCE POUR LES VARIANTS */
+/* OPTIMISATIONS DE PERFORMANCE POUR LES VARIANTS - POLICES AUGMENTÉES */
 .variants-table-container {
     width: 100%;
     overflow-x: auto;
@@ -249,10 +251,10 @@ div[class*="-option"] {
 }
 
 .variants-table th {
-    padding: 15px 12px;
+    padding: 18px 15px !important;  /* Augmenté le padding */
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    font-weight: 600;
-    font-size: 13px;
+    font-weight: 700 !important;  /* Augmenté le poids */
+    font-size: 15px !important;   /* Augmenté de 13px à 15px */
     text-align: left;
     border-bottom: 2px solid #dee2e6;
     white-space: nowrap;
@@ -272,10 +274,11 @@ div[class*="-option"] {
 }
 
 .variants-table td {
-    padding: 12px;
+    padding: 15px !important;  /* Augmenté de 12px à 15px */
     border-bottom: 1px solid #e9ecef;
     vertical-align: middle;
-    font-size: 12px;
+    font-size: 14px !important;  /* Augmenté de 12px à 14px */
+    line-height: 1.4 !important;  /* Améliore la lisibilité */
 }
 
 .variant-row {
@@ -299,7 +302,7 @@ div[class*="-option"] {
 .quick-filter-btn {
     transition: all 0.2s ease;
     border-radius: 20px;
-    font-size: 0.85em;
+    font-size: 0.9em !important;  /* Augmenté de 0.85em à 0.9em */
     margin: 2px;
 }
 
@@ -323,25 +326,46 @@ div[class*="-option"] {
 
 .genotype-badge {
     font-family: monospace;
-    font-size: 0.8em;
-    padding: 2px 6px;
+    font-size: 0.85em !important;  /* Augmenté de 0.8em à 0.85em */
+    padding: 3px 8px !important;   /* Augmenté le padding */
     border-radius: 8px;
     will-change: auto;
     backface-visibility: hidden;
+    font-weight: 600 !important;   /* Ajouté pour plus de visibilité */
 }
 
-.gt-het { background: #fff3cd; color: #856404; }
-.gt-hom-alt { background: #f8d7da; color: #721c24; }
-.gt-hom-ref { background: #d1edff; color: #0c5460; }
-.gt-missing { background: #f8f9fa; color: #6c757d; }
+.gt-het { 
+    background: #fff3cd; 
+    color: #856404; 
+    border: 1px solid #ffeaa7 !important;  /* Ajouté une bordure */
+}
+.gt-hom-alt { 
+    background: #f8d7da; 
+    color: #721c24; 
+    border: 1px solid #f5c2c7 !important;  /* Ajouté une bordure */
+}
+.gt-hom-ref { 
+    background: #d1edff; 
+    color: #0c5460; 
+    border: 1px solid #b6e8ff !important;  /* Ajouté une bordure */
+}
+.gt-missing { 
+    background: #f8f9fa; 
+    color: #6c757d; 
+    border: 1px solid #dee2e6 !important;  /* Ajouté une bordure */
+}
 
 .detail-section {
     background: white;
     border-radius: 8px;
-    padding: 15px;
+    padding: 18px !important;  /* Augmenté de 15px à 18px */
     margin-bottom: 15px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     border-left: 4px solid #00BCD4;
+}
+
+.detail-section .fw-bold, .detail-section strong {
+    font-size: 14px !important;  /* Augmenté pour les labels */
 }
 
 .uniform-height {
@@ -352,6 +376,7 @@ div[class*="-option"] {
 
 .uniform-height .text-primary {
     flex-shrink: 0;
+    font-size: 16px !important;  /* Augmenté pour les titres de sections */
 }
 
 .uniform-height > div:last-child {
@@ -368,10 +393,11 @@ div[class*="-option"] {
 .comment-item {
     background: rgba(255, 255, 255, 0.9);
     border-radius: 8px;
-    padding: 12px;
+    padding: 15px !important;  /* Augmenté de 12px à 15px */
     margin-bottom: 10px;
     border-left: 3px solid #00BCD4;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    font-size: 14px !important;  /* Ajouté pour les commentaires */
 }
 
 .loading-spinner {
@@ -401,7 +427,7 @@ div[class*="-option"] {
 
 .alert-warning {
     border-left: 4px solid #f39c12;
-    font-size: 0.9em;
+    font-size: 0.95em !important;  /* Augmenté de 0.9em à 0.95em */
 }
 
 .alert-warning .fas {
@@ -411,5 +437,251 @@ div[class*="-option"] {
 .badge {
     will-change: auto;
     backface-visibility: hidden;
+    font-size: 0.8em !important;  /* Augmenté pour les badges */
+    padding: 0.4em 0.6em !important;  /* Augmenté le padding des badges */
+}
+
+/* AMÉLIORATION DES LIENS DE GÈNES */
+.gene-link {
+    font-size: 14px !important;  /* Augmenté pour les liens de gènes */
+    font-weight: 600 !important;
+}
+
+/* AMÉLIORATION DES BOUTONS */
+.btn-sm {
+    font-size: 0.8em !important;  /* Augmenté légèrement */
+    padding: 0.375rem 0.75rem !important;  /* Augmenté le padding */
+}
+
+/* AMÉLIORATION DE LA LISIBILITÉ GÉNÉRALE - HARMONISATION */
+body, .dash-bootstrap {
+    font-size: 15px !important;  /* Taille de base harmonisée */
+}
+
+/* TITRES HARMONISÉS */
+h1 {
+    font-size: 2.2rem !important;  /* Titre principal plus grand */
+    font-weight: 700 !important;
+}
+
+h2 {
+    font-size: 1.8rem !important;
+    font-weight: 650 !important;
+}
+
+h3 {
+    font-size: 1.5rem !important;
+    font-weight: 600 !important;
+}
+
+h4 {
+    font-size: 1.3rem !important;
+    font-weight: 600 !important;
+}
+
+h5 {
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+}
+
+h6 {
+    font-size: 1.05rem !important;
+    font-weight: 600 !important;
+}
+
+/* TEXTES ET LABELS */
+.text-muted {
+    font-size: 14px !important;
+}
+
+label, .form-label {
+    font-size: 15px !important;
+    font-weight: 500 !important;
+}
+
+p {
+    font-size: 15px !important;
+    line-height: 1.5 !important;
+}
+
+/* NAVIGATION ET MENUS */
+.nav-link {
+    font-size: 15px !important;
+}
+
+.navbar-brand {
+    font-size: 1.4rem !important;
+    font-weight: 700 !important;
+}
+
+/* BOUTONS HARMONISÉS */
+.btn {
+    font-size: 14px !important;
+    padding: 0.6rem 1.2rem !important;
+    font-weight: 500 !important;
+}
+
+.btn-sm {
+    font-size: 13px !important;
+    padding: 0.4rem 0.8rem !important;
+}
+
+.btn-lg {
+    font-size: 16px !important;
+    padding: 0.8rem 1.5rem !important;
+}
+
+/* CARDS ET CONTAINERS */
+.card-title {
+    font-size: 1.2rem !important;
+    font-weight: 600 !important;
+}
+
+.card-text {
+    font-size: 15px !important;
+}
+
+.card-body {
+    padding: 1.5rem !important;
+}
+
+/* ALERTS ET NOTIFICATIONS */
+.alert {
+    font-size: 15px !important;
+    padding: 1rem 1.25rem !important;
+}
+
+.alert h4, .alert h5 {
+    font-size: 1.2rem !important;
+}
+
+/* SAMPLE SELECTOR AMÉLIORÉ */
+.sample-selector-container h6 {
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+}
+
+.sample-selector-container p {
+    font-size: 14px !important;
+}
+
+/* QUICK FILTERS AMÉLIORÉS */
+.quick-filter-btn {
+    transition: all 0.2s ease;
+    border-radius: 20px;
+    font-size: 14px !important;  /* Augmenté */
+    margin: 3px;
+    padding: 0.5rem 1rem !important;  /* Augmenté */
+    font-weight: 500 !important;
+}
+
+.quick-filter-btn:hover {
+    transform: scale(1.05);
+}
+
+.quick-filter-btn.active {
+    background: linear-gradient(45deg, #00BCD4, #0097A7) !important;
+    color: white !important;
+    border-color: #00BCD4 !important;
+}
+
+/* VARIANT COUNT DISPLAY */
+.variant-count h5 {
+    font-size: 1.4rem !important;
+}
+
+.variant-count .text-primary {
+    font-size: 1.6rem !important;
+}
+
+/* AMÉLIORATION DES DROPDOWNS */
+.Select-control, .css-1pahdxg-control {
+    font-size: 15px !important;
+    min-height: 42px !important;
+    padding: 8px 12px !important;
+}
+
+.Select-option, .css-1n7v3ny-option {
+    font-size: 15px !important;
+    padding: 12px 16px !important;
+}
+
+.Select-placeholder, .css-1wa3eu0-placeholder {
+    font-size: 15px !important;
+}
+
+.Select-value-label, .css-1uccc91-singleValue {
+    font-size: 15px !important;
+}
+
+/* MODALS HARMONISÉS */
+.modal-title {
+    font-size: 1.4rem !important;
+    font-weight: 600 !important;
+}
+
+.modal-body {
+    font-size: 15px !important;
+}
+
+.modal-header {
+    padding: 1.2rem 1.5rem !important;
+}
+
+.modal-body {
+    padding: 1.5rem !important;
+}
+
+.modal-footer {
+    padding: 1rem 1.5rem !important;
+}
+
+/* TEXTAREA ET INPUTS */
+.form-control, textarea, input {
+    font-size: 15px !important;
+    padding: 0.6rem 0.75rem !important;
+}
+
+/* SIDEBAR AMÉLIORÉ */
+.filter-sidebar h4 {
+    font-size: 1.3rem !important;
+}
+
+.filter-sidebar label {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+}
+
+.filter-sidebar .small {
+    font-size: 13px !important;
+}
+
+/* RANGE SLIDER LABELS */
+.rc-slider-mark-text {
+    font-size: 12px !important;
+}
+
+/* SPINNER ET LOADING */
+.loading-spinner h5 {
+    font-size: 1.2rem !important;
+}
+
+/* DATABASE STATUS */
+.db-status-container strong {
+    font-size: 15px !important;
+}
+
+.db-status-container span {
+    font-size: 14px !important;
+}
+
+/* TOOLTIPS */
+.tooltip {
+    font-size: 14px !important;
+}
+
+/* CONTAINER SPACING AMÉLIORÉ */
+.container-fluid {
+    padding: 25px !important;
 }
 '''

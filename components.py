@@ -3,6 +3,7 @@ UI Components for Variant Visualizer
 Contains all display components and layout functions
 OPTIMIZED VERSION with performance improvements
 UPDATED WITH GENE NAME LINKS TO OMIM
+UPDATED WITH LARGER FONTS FOR BETTER READABILITY
 """
 
 import dash_bootstrap_components as dbc
@@ -39,7 +40,7 @@ def create_database_status_display():
 	])
 
 def create_beautiful_variant_display(df):
-	"""Create optimized variant table display with performance improvements and gene links"""
+	"""Create optimized variant table display with performance improvements and gene links - LARGER FONTS"""
 	# Check DataFrame length properly for both Polars and Pandas
 	if isinstance(df, pl.DataFrame):
 		is_empty = len(df) == 0
@@ -99,37 +100,37 @@ def create_beautiful_variant_display(df):
 			'variant': variant
 		})
 	
-	# Create table rows with optimized rendering
+	# Create table rows with optimized rendering - LARGER FONTS
 	table_rows = []
 	
 	for data in variant_data:
 		variant = data['variant']
 		variant_key = data['variant_key']
 		
-		# Create simplified data row with minimal DOM elements
+		# Create simplified data row with minimal DOM elements - INCREASED FONT SIZES
 		data_row = html.Tr([
-			# Sample ID
-			html.Td(variant['SAMPLE'], style={"fontSize": "11px", "fontWeight": "500"}),
-			# Position
-			html.Td(data['position'], style={"fontFamily": "monospace", "fontSize": "11px"}),
-			# Gene - UPDATED TO USE GENE LINK
-			html.Td(create_gene_link(variant.get('gene', 'UNKNOWN'))),
-			# Variant
-			html.Td(data['variant_text'], style={"fontFamily": "monospace", "fontSize": "11px", "backgroundColor": "#f8f9fa", "borderRadius": "4px", "textAlign": "center"}),
-			# Genotype - Optimized
+			# Sample ID - INCREASED FONT SIZE
+			html.Td(variant['SAMPLE'], style={"fontSize": "14px", "fontWeight": "600"}),
+			# Position - INCREASED FONT SIZE
+			html.Td(data['position'], style={"fontFamily": "monospace", "fontSize": "14px", "fontWeight": "500"}),
+			# Gene - UPDATED TO USE GENE LINK - INCREASED FONT SIZE
+			html.Td(create_gene_link(variant.get('gene', 'UNKNOWN')), style={"fontSize": "14px"}),
+			# Variant - INCREASED FONT SIZE
+			html.Td(data['variant_text'], style={"fontFamily": "monospace", "fontSize": "14px", "backgroundColor": "#f8f9fa", "borderRadius": "4px", "textAlign": "center", "fontWeight": "500"}),
+			# Genotype - Optimized - INCREASED FONT SIZE
 			html.Td([get_genotype_badge_optimized(variant.get('GT', './.'))]),
-			# VAF
-			html.Td(data['vaf_display'], style={"fontFamily": "monospace", "fontSize": "10px", "textAlign": "right"}),
-			# Consequence - Optimized
+			# VAF - INCREASED FONT SIZE
+			html.Td(data['vaf_display'], style={"fontFamily": "monospace", "fontSize": "13px", "textAlign": "right", "fontWeight": "500"}),
+			# Consequence - Optimized - INCREASED FONT SIZE
 			html.Td([get_consequence_badge_optimized(variant.get('consequence', 'variant'))]),
-			# ClinVar Classification - Optimized
+			# ClinVar Classification - Optimized - INCREASED FONT SIZE
 			html.Td([get_clinvar_badge_optimized(variant.get('clinvar_sig'))]),
-			# Population Frequency
+			# Population Frequency - INCREASED FONT SIZE
 			html.Td([
 				html.Span(data['pop_af_display'], 
 					style={
 						"fontFamily": "monospace", 
-						"fontSize": "10px", 
+						"fontSize": "13px", 
 						"fontWeight": "bold",
 						"color": "#dc3545" if data['pop_af'] and data['pop_af'] < 0.001 
 							else "#ffc107" if data['pop_af'] and 0.001 <= data['pop_af'] < 0.01 
@@ -139,11 +140,12 @@ def create_beautiful_variant_display(df):
 					title=f"Population Allele Frequency: {data['pop_af_display']}"
 				)
 			], style={"textAlign": "right"}),
-			# Comments
+			# Comments - INCREASED FONT SIZE
 			html.Td([
 				dbc.Button([html.I(className="fas fa-comments me-1"), str(variant.get('comment_count', 0))], 
 						id={"type": "comment-btn", "variant": variant_key, "sample": variant['SAMPLE']},
-						color="outline-primary", size="sm", n_clicks=0)
+						color="outline-primary", size="sm", n_clicks=0, 
+						style={"fontSize": "12px"})
 			], style={"textAlign": "center"}),
 		], className="variant-row", id={"type": "variant-row", "variant": variant_key, "sample": variant['SAMPLE']}, n_clicks=0)
 		
@@ -171,22 +173,22 @@ def create_beautiful_variant_display(df):
 			], color="warning", className="mb-3", style={"fontSize": "0.9em"})
 		]
 	
-	# Create table with minimal overhead
+	# Create table with minimal overhead - LARGER HEADERS
 	return html.Div([
 		*performance_notice,
 		html.Table([
 			html.Thead([
 				html.Tr([
-					html.Th("Sample", className="sortable-header"),
-					html.Th("Position", className="sortable-header"),
-					html.Th("Gene", className="sortable-header"),
-					html.Th("Variant", className="sortable-header"),
-					html.Th("Genotype", className="sortable-header"),
-					html.Th("VAF", className="sortable-header"),
-					html.Th("Consequence", className="sortable-header"),
-					html.Th("ClinVar", className="sortable-header"),
-					html.Th("Pop. AF", className="sortable-header", title="Population Allele Frequency"),
-					html.Th("Comments", className="sortable-header"),
+					html.Th("Sample", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+					html.Th("Position", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+					html.Th("Gene", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+					html.Th("Variant", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+					html.Th("Genotype", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+					html.Th("VAF", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+					html.Th("Consequence", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+					html.Th("ClinVar", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+					html.Th("Pop. AF", className="sortable-header", title="Population Allele Frequency", style={"fontSize": "15px", "fontWeight": "700"}),
+					html.Th("Comments", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
 				])
 			]),
 			html.Tbody(table_rows)
@@ -219,17 +221,17 @@ def create_variant_details_accordion(variant):
 					html.Div([
 						html.Div([
 							html.Strong("Position: "),
-							html.Span(f"{variant['CHROM']}:{variant['POS']:}")
+							html.Span(f"{variant['CHROM']}:{variant['POS']:}", style={"fontSize": "14px"})
 						], className="mb-2"),
 						
 						html.Div([
 							html.Strong("Reference: "),
-							html.Span(variant['REF'])
+							html.Span(variant['REF'], style={"fontSize": "14px"})
 						], className="mb-2"),
 						
 						html.Div([
 							html.Strong("Alternate: "),
-							html.Span(variant['ALT'])
+							html.Span(variant['ALT'], style={"fontSize": "14px"})
 						], className="mb-2"),
 						
 						html.Div([
@@ -239,7 +241,7 @@ def create_variant_details_accordion(variant):
 						
 						html.Div([
 							html.Strong("Quality: "),
-							html.Span(f"{variant.get('QUAL', 0):.1f}" if pd.notna(variant.get('QUAL')) else "N/A")
+							html.Span(f"{variant.get('QUAL', 0):.1f}" if pd.notna(variant.get('QUAL')) else "N/A", style={"fontSize": "14px"})
 						], className="mb-2"),
 
 					])
@@ -257,27 +259,27 @@ def create_variant_details_accordion(variant):
 					html.Div([
 						html.Div([
 							html.Strong("VAF: "),
-							html.Span(format_percentage(variant.get('VAF', 0)))
+							html.Span(format_percentage(variant.get('VAF', 0)), style={"fontSize": "14px"})
 						], className="mb-2"),
 						
 						html.Div([
 							html.Strong("Depth: "),
-							html.Span(f"{variant.get('DP', 0)}" if pd.notna(variant.get('DP')) else "N/A")
+							html.Span(f"{variant.get('DP', 0)}" if pd.notna(variant.get('DP')) else "N/A", style={"fontSize": "14px"})
 						], className="mb-2"),
 						
 						html.Div([
 							html.Strong("Allelic Depth: "),
-							html.Span(variant.get('AD', 'N/A'))
+							html.Span(variant.get('AD', 'N/A'), style={"fontSize": "14px"})
 						], className="mb-2"),
 						
 						html.Div([
 							html.Strong("Genotype Quality: "),
-							html.Span(f"{variant.get('GQ', 0):.1f}" if pd.notna(variant.get('GQ')) else "N/A")
+							html.Span(f"{variant.get('GQ', 0):.1f}" if pd.notna(variant.get('GQ')) else "N/A", style={"fontSize": "14px"})
 						], className="mb-2"),
 						
 						html.Div([
 							html.Strong("Sample ID: "),
-							html.Span(sample_id)
+							html.Span(sample_id, style={"fontSize": "14px"})
 						], className="mb-2")
 					])
 				], className="detail-section uniform-height")
@@ -309,12 +311,12 @@ def create_variant_details_accordion(variant):
 						
 						html.Div([
 							html.Strong("AA Change: "),
-							html.Span(variant.get('aa_change', 'N/A'))
+							html.Span(variant.get('aa_change', 'N/A'), style={"fontSize": "14px"})
 						], className="mb-2"),
 						
 						html.Div([
 							html.Strong("gnomAD AF: "),
-							html.Span(format_frequency(variant.get('gnomad_af', 0)))
+							html.Span(format_frequency(variant.get('gnomad_af', 0)), style={"fontSize": "14px"})
 						], className="mb-2")
 					])
 				], className="detail-section uniform-height")
@@ -340,7 +342,7 @@ def create_variant_details_accordion(variant):
 								style={"color": "#28a745" if variant.get('cadd_score', 0) and variant.get('cadd_score', 0) < 15 
 									else "#ffc107" if variant.get('cadd_score', 0) and 15 <= variant.get('cadd_score', 0) < 25 
 									else "#dc3545" if variant.get('cadd_score', 0) and variant.get('cadd_score', 0) >= 25 
-									else "#6c757d"}
+									else "#6c757d", "fontSize": "14px"}
 							),
 							html.Br(),
 							html.Small(" (>15 deleterious)", className="text-muted")
@@ -353,7 +355,7 @@ def create_variant_details_accordion(variant):
 								className="fw-bold",
 								style={"color": "#dc3545" if variant.get('sift_score', 0) and variant.get('sift_score', 0) < 0.05 
 									else "#28a745" if variant.get('sift_score', 0) and variant.get('sift_score', 0) >= 0.05 
-									else "#6c757d"}
+									else "#6c757d", "fontSize": "14px"}
 							),
 							html.Br(),
 							html.Small(" (<0.05 deleterious)", className="text-muted")
@@ -367,7 +369,7 @@ def create_variant_details_accordion(variant):
 								style={"color": "#28a745" if variant.get('polyphen_score', 0) and variant.get('polyphen_score', 0) < 0.15 
 									else "#ffc107" if variant.get('polyphen_score', 0) and 0.15 <= variant.get('polyphen_score', 0) < 0.85 
 									else "#dc3545" if variant.get('polyphen_score', 0) and variant.get('polyphen_score', 0) >= 0.85 
-									else "#6c757d"}
+									else "#6c757d", "fontSize": "14px"}
 							),
 							html.Br(),
 							html.Small(" (>0.85 damaging)", className="text-muted")
@@ -393,7 +395,7 @@ def create_variant_details_accordion(variant):
 								style={"color": "#28a745" if variant.get('revel_score', 0) and variant.get('revel_score', 0) < 0.3 
 									else "#ffc107" if variant.get('revel_score', 0) and 0.3 <= variant.get('revel_score', 0) < 0.7 
 									else "#dc3545" if variant.get('revel_score', 0) and variant.get('revel_score', 0) >= 0.7 
-									else "#6c757d"}
+									else "#6c757d", "fontSize": "14px"}
 							),
 							html.Br(),
 							html.Small(" (>0.7 pathogenic)", className="text-muted")
@@ -407,7 +409,7 @@ def create_variant_details_accordion(variant):
 								style={"color": "#28a745" if variant.get('splice_ai', 0) and variant.get('splice_ai', 0) < 0.2 
 									else "#ffc107" if variant.get('splice_ai', 0) and 0.2 <= variant.get('splice_ai', 0) < 0.5 
 									else "#dc3545" if variant.get('splice_ai', 0) and variant.get('splice_ai', 0) >= 0.5 
-									else "#6c757d"}
+									else "#6c757d", "fontSize": "14px"}
 							),
 							html.Br(),
 							html.Small(" (>0.5 splice altering)", className="text-muted")
@@ -421,7 +423,7 @@ def create_variant_details_accordion(variant):
 								style={"color": "#28a745" if variant.get('pli_score', 0) and variant.get('pli_score', 0) < 0.1 
 									else "#ffc107" if variant.get('pli_score', 0) and 0.1 <= variant.get('pli_score', 0) < 0.9 
 									else "#dc3545" if variant.get('pli_score', 0) and variant.get('pli_score', 0) >= 0.9 
-									else "#6c757d"}
+									else "#6c757d", "fontSize": "14px"}
 							),
 							html.Br(),
 							html.Small(" (>0.9 intolerant)", className="text-muted")
@@ -447,7 +449,7 @@ def create_variant_details_accordion(variant):
 								style={"color": "#28a745" if variant.get('primateai_score', 0) and variant.get('primateai_score', 0) < 0.5 
 									else "#ffc107" if variant.get('primateai_score', 0) and 0.5 <= variant.get('primateai_score', 0) < 0.8 
 									else "#dc3545" if variant.get('primateai_score', 0) and variant.get('primateai_score', 0) >= 0.8 
-									else "#6c757d"}
+									else "#6c757d", "fontSize": "14px"}
 							),
 							html.Br(),
 							html.Small(" (>0.8 pathogenic)", className="text-muted")
@@ -461,7 +463,7 @@ def create_variant_details_accordion(variant):
 								style={"color": "#dc3545" if variant.get('af', 0) and variant.get('af', 0) < 0.001 
 									else "#ffc107" if variant.get('af', 0) and 0.001 <= variant.get('af', 0) < 0.01 
 									else "#28a745" if variant.get('af', 0) and variant.get('af', 0) >= 0.01 
-									else "#6c757d"}
+									else "#6c757d", "fontSize": "14px"}
 							),
 							html.Br(),
 							html.Small(" (rare <0.1%)", className="text-muted")
@@ -469,7 +471,7 @@ def create_variant_details_accordion(variant):
 						
 						html.Div([
 							html.Strong("Allele Count: "),
-							html.Span(f"{variant.get('ac', 0)}" if pd.notna(variant.get('ac')) else "N/A"),
+							html.Span(f"{variant.get('ac', 0)}" if pd.notna(variant.get('ac')) else "N/A", style={"fontSize": "14px"}),
 							html.Br(),
 							html.Small(" (rare <0.1%)", className="text-muted")
 						], className="mb-2")
@@ -549,7 +551,7 @@ def create_sidebar():
 			html.H4([
 				html.I(className="fas fa-sliders-h me-2"),
 				"Advanced Filters"
-			], className="text-primary mb-0"),
+			], className="text-primary mb-0", style={"fontSize": "1.3rem"}),  # HARMONISÉ
 			dbc.Button([
 				html.I(className="fas fa-times")
 			], 
@@ -566,17 +568,16 @@ def create_sidebar():
 				html.Label([
 					html.I(className="fas fa-search me-2"),
 					"Search Genes, Samples..."
-				], className="fw-bold mb-2 text-primary"),
+				], className="fw-bold mb-2 text-primary", style={"fontSize": "15px"}),  # HARMONISÉ
 				dbc.Input(
 					id="search-input",
 					placeholder="e.g., BRCA1, Sample001, chr1...",
 					debounce=True,
-					# Remove automatic validation styling that causes green icon
-					style={"borderRadius": "8px"}
+					style={"borderRadius": "8px", "fontSize": "15px", "padding": "0.6rem"}  # HARMONISÉ
 				),
 				html.Small(
 					"Search by gene name, sample ID, chromosome, or consequence", 
-					className="text-muted mt-1 d-block"
+					className="text-muted mt-1 d-block", style={"fontSize": "13px"}  # HARMONISÉ
 				)
 			], className="mb-4"),
 			
@@ -585,8 +586,9 @@ def create_sidebar():
 				html.Label([
 					html.I(className="fas fa-chart-line me-2"),
 					"Variant Allele Frequency (VAF)"
-				], className="fw-bold mb-2 text-primary"),
-				html.Label("Filter by VAF Range:", className="small mb-2"),
+				], className="fw-bold mb-2 text-primary", style={"fontSize": "15px"}),  # HARMONISÉ
+				html.Label("Filter by VAF Range:", className="mb-2", 
+						  style={"fontSize": "14px"}),  # HARMONISÉ
 				dcc.RangeSlider(
 					id="vaf-range-slider",
 					min=0,
@@ -598,7 +600,7 @@ def create_sidebar():
 				),
 				html.Small(
 					"Only show variants within the selected VAF range", 
-					className="text-muted mt-2 d-block"
+					className="text-muted mt-2 d-block", style={"fontSize": "13px"}  # HARMONISÉ
 				)
 			], className="mb-4"),
 			
@@ -612,7 +614,7 @@ def create_sidebar():
 				color="primary", 
 				size="md", 
 				className="w-100 mb-3",
-				style={"borderRadius": "8px", "fontWeight": "bold"}
+				style={"borderRadius": "8px", "fontWeight": "bold", "fontSize": "14px", "padding": "0.7rem"}  # HARMONISÉ
 				),
 				dbc.Button([
 					html.I(className="fas fa-trash me-2"),
@@ -622,11 +624,12 @@ def create_sidebar():
 				color="outline-danger", 
 				size="sm", 
 				className="w-100",
-				style={"borderRadius": "8px"}
+				style={"borderRadius": "8px", "fontSize": "13px"}  # HARMONISÉ
 				)
 			])
 		], className="p-3")
 	], id="filter-sidebar", className="filter-sidebar")
+
 def create_header():
 	"""Create the main header component"""
 	return dbc.Card([
@@ -636,13 +639,13 @@ def create_header():
 					html.H1([
 						"🧬 ", 
 						html.Span("Variant Visualizer", style={"color": "#0097A7"}),
-					], className="mb-0"),
+					], className="mb-0", style={"fontSize": "2.2rem"}),  # HARMONISÉ
 				], style={"flex": "1"}),
 				html.Div([
 					# Space for future buttons if needed
 				])
 			], style={"display": "flex", "alignItems": "center", "justifyContent": "space-between"})
-		])
+		], style={"padding": "1.5rem"})  # PADDING AUGMENTÉ
 	], className="glass-card mb-3")
 
 def create_sample_selector():
@@ -651,8 +654,10 @@ def create_sample_selector():
 		dbc.CardBody([
 			html.Div([
 				html.Div([
-					html.H6([html.I(className="fas fa-users me-2"), "Sample Selection"], className="mb-2 text-primary"),
-					html.P("Select samples to display variants:", className="text-muted mb-0 small")
+					html.H6([html.I(className="fas fa-users me-2"), "Sample Selection"], 
+						   className="mb-2 text-primary", style={"fontSize": "1.1rem"}),  # HARMONISÉ
+					html.P("Select samples to display variants:", 
+						  className="text-muted mb-0", style={"fontSize": "14px"})  # HARMONISÉ
 				]),
 				html.Div([
 					dcc.Dropdown(
@@ -661,14 +666,15 @@ def create_sample_selector():
 						multi=True,
 						searchable=True,
 						clearable=True,
-						style={"minWidth": "300px"}
+						style={"minWidth": "300px", "fontSize": "15px"}  # HARMONISÉ
 					)
 				], style={"flex": "1", "position": "relative"}),
 				dbc.ButtonGroup([
-					dbc.Button("Clear", id="clear-samples", color="outline-secondary", size="sm")
+					dbc.Button("Clear", id="clear-samples", color="outline-secondary", size="sm",
+							  style={"fontSize": "13px"})  # HARMONISÉ
 				])
 			], style={"display": "flex", "alignItems": "center", "gap": "15px"})
-		], style={"padding": "20px"})
+		], style={"padding": "1.5rem"})  # PADDING AUGMENTÉ
 	], className="sample-selector-container mb-3")
 
 def create_main_filters_panel():
@@ -681,26 +687,30 @@ def create_main_filters_panel():
 				], width=3),
 				dbc.Col([
 					html.Div([
-						html.Label("Quick Filters:", className="fw-bold me-3 mb-0"),
+						html.Label("", className="fw-bold me-3 mb-0", # Quick Filters Label
+								  style={"fontSize": "15px"}),  # HARMONISÉ
 						html.Div([
 							dbc.Button([f["icon"], " ", f["name"]], 
 									id={"type": "preset-filter", "id": f["id"]},
-									color="outline-info", size="sm", className="quick-filter-btn me-2 mb-1", n_clicks=0)
+									color="outline-info", size="sm", className="quick-filter-btn me-2 mb-1", 
+									n_clicks=0, style={"fontSize": "14px"})  # HARMONISÉ
 							for f in PRESET_FILTERS
 						], style={"display": "flex", "flexWrap": "wrap"})
 					])
 				], width=6),
 				dbc.Col([
 					dbc.ButtonGroup([
-						dbc.Button("More Filters", id="more-filters-btn", color="outline-secondary", size="sm"),
+						dbc.Button("More Filters", id="more-filters-btn", color="outline-secondary", size="sm",
+								  style={"fontSize": "13px"}),  # HARMONISÉ
 						dbc.Button([
 							html.I(className="fas fa-undo me-1"),
 							"Reset"
-						], id="reset-all-btn", color="outline-danger", size="sm", title="Reset all filters")
+						], id="reset-all-btn", color="outline-danger", size="sm", title="Reset all filters",
+						style={"fontSize": "13px"})  # HARMONISÉ
 					])
 				], width=3, className="text-end")
 			], align="center")
-		], style={"padding": "15px"})
+		], style={"padding": "1.25rem"})  # PADDING AUGMENTÉ
 	], className="main-filters-panel mb-3")
 
 def create_comment_modal():
@@ -790,9 +800,10 @@ def create_variant_count_display(count, total_count, sample_count):
 	
 	return html.Div([
 		html.H5([
-			html.Span(f"{count:,}", className="text-primary fw-bold", style={"fontSize": "1.5em"}),
-			html.Span(" variants", style={"fontSize": "1.2em"}),
-			html.Span(sample_text, style={"fontSize": "0.9em", "color": "#0097A7"})
+			html.Span(f"{count:,}", className="text-primary fw-bold", style={"fontSize": "1.6rem"}),  # HARMONISÉ
+			html.Span(" variants", style={"fontSize": "1.2rem"}),  # HARMONISÉ
+			html.Span(sample_text, style={"fontSize": "1rem", "color": "#0097A7"})  # HARMONISÉ
 		], className="mb-0"),
-		html.Small(f"(from {total_count:,} total)", className="text-muted") if total_count != count else html.Div()
+		html.Small(f"(from {total_count:,} total)", className="text-muted", 
+				  style={"fontSize": "14px"}) if total_count != count else html.Div()  # HARMONISÉ
 	])

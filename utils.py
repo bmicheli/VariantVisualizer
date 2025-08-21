@@ -2,6 +2,7 @@
 Utility functions for Variant Visualizer
 Contains badge creation, filtering, and data processing functions
 UPDATED WITH GENE NAME MAPPING AND OMIM LINKS - HANDLES MULTIPLE GENES
+UPDATED WITH LARGER FONTS FOR BETTER READABILITY
 """
 
 import dash_bootstrap_components as dbc
@@ -364,10 +365,10 @@ def apply_filters_with_debug(df, search_term=None, genotype_filter=None, chromos
 apply_filters = apply_filters_with_debug
 
 def create_gene_link(gene_id_or_name):
-    """Create clickable gene name(s) with OMIM links - handles multiple genes with deduplication"""
+    """Create clickable gene name(s) with OMIM links - handles multiple genes with deduplication - LARGER FONTS"""
     
     if pd.isna(gene_id_or_name) or gene_id_or_name in [None, '', 'UNKNOWN']:
-        return html.Span("UNKNOWN", style={"color": "#6c757d", "fontStyle": "italic"})
+        return html.Span("UNKNOWN", style={"color": "#6c757d", "fontStyle": "italic", "fontSize": "14px"})
     
     gene_input = str(gene_id_or_name)
     
@@ -403,7 +404,7 @@ def create_gene_link(gene_id_or_name):
                 style={
                     "color": "#6c757d", 
                     "fontStyle": "italic",
-                    "fontSize": "12px"
+                    "fontSize": "14px"  # INCREASED FONT SIZE
                 }
             )
         else:
@@ -418,9 +419,10 @@ def create_gene_link(gene_id_or_name):
                     "fontWeight": "bold", 
                     "color": "#0097A7", 
                     "textDecoration": "none",
-                    "fontSize": "12px"
+                    "fontSize": "14px"  # INCREASED FONT SIZE
                 },
-                title=f"View {gene_name} in OMIM database"
+                title=f"View {gene_name} in OMIM database",
+                className="gene-link"
             )
         
         gene_links.append(gene_element)
@@ -430,7 +432,7 @@ def create_gene_link(gene_id_or_name):
             gene_links.append(
                 html.Span(" • ", style={
                     "color": "#6c757d", 
-                    "fontSize": "12px",
+                    "fontSize": "14px",  # INCREASED FONT SIZE
                     "margin": "0 2px"
                 })
             )
@@ -457,49 +459,56 @@ def is_dataframe_empty(df):
         return df.empty
 
 def get_consequence_badge(consequence):
-    """Return styled badge for consequence"""
+    """Return styled badge for consequence - LARGER FONTS"""
     if not consequence or pd.isna(consequence):
         consequence = 'variant'
     
     color = CONSEQUENCE_COLORS.get(consequence, 'secondary')
-    return dbc.Badge(consequence, color=color, className="me-1")
+    return dbc.Badge(consequence, color=color, className="me-1", 
+                    style={"fontSize": "0.8em", "padding": "0.4em 0.6em"})  # INCREASED SIZE
 
 def get_clinvar_badge(classification):
-    """Return styled badge for ClinVar classification"""
+    """Return styled badge for ClinVar classification - LARGER FONTS"""
     if not classification or pd.isna(classification):
-        return dbc.Badge("No annotation", color="light", text_color="dark")
+        return dbc.Badge("No annotation", color="light", text_color="dark", 
+                        style={"fontSize": "0.8em", "padding": "0.4em 0.6em"})  # INCREASED SIZE
     
     color = CLINVAR_COLORS.get(classification, 'secondary')
-    return dbc.Badge(classification, color=color)
+    return dbc.Badge(classification, color=color, 
+                    style={"fontSize": "0.8em", "padding": "0.4em 0.6em"})  # INCREASED SIZE
 
 def get_status_badge(status):
-    """Return styled badge for review status"""
+    """Return styled badge for review status - LARGER FONTS"""
     if not status or pd.isna(status):
         status = 'Pending'
     
     color = STATUS_COLORS.get(status, 'secondary')
-    return dbc.Badge(status, color=color)
+    return dbc.Badge(status, color=color, 
+                    style={"fontSize": "0.8em", "padding": "0.4em 0.6em"})  # INCREASED SIZE
 
 def get_genotype_badge(genotype):
-    """Return styled badge for genotype"""
+    """Return styled badge for genotype - LARGER FONTS"""
     if pd.isna(genotype) or genotype in [None, './.', '.', '']:
-        return html.Span("./.", className="genotype-badge gt-missing")
+        return html.Span("./.", className="genotype-badge gt-missing", 
+                        style={"fontSize": "0.9em", "padding": "4px 8px", "fontWeight": "600"})  # INCREASED SIZE
 
     gt_str = str(genotype) if genotype is not None else "./."
     gt_str = gt_str.replace('|', '/')
 
-    if gt_str in ['0/0', '0|0']:
-        return html.Span("0/0", className="genotype-badge gt-hom-ref", title="Homozygous Reference")
-    elif gt_str in ['0/1', '1/0', '0|1', '1|0']:
-        return html.Span("0/1", className="genotype-badge gt-het", title="Heterozygous")
-    elif gt_str in ['1/1', '1|1']:
-        return html.Span("1/1", className="genotype-badge gt-hom-alt", title="Homozygous Alternate")
-    else:
-        return html.Span(gt_str, className="genotype-badge gt-missing")
+    base_style = {"fontSize": "0.9em", "padding": "4px 8px", "fontWeight": "600"}  # INCREASED SIZE
 
-# OPTIMIZED VERSIONS FOR PERFORMANCE
+    if gt_str in ['0/0', '0|0']:
+        return html.Span("0/0", className="genotype-badge gt-hom-ref", title="Homozygous Reference", style=base_style)
+    elif gt_str in ['0/1', '1/0', '0|1', '1|0']:
+        return html.Span("0/1", className="genotype-badge gt-het", title="Heterozygous", style=base_style)
+    elif gt_str in ['1/1', '1|1']:
+        return html.Span("1/1", className="genotype-badge gt-hom-alt", title="Homozygous Alternate", style=base_style)
+    else:
+        return html.Span(gt_str, className="genotype-badge gt-missing", style=base_style)
+
+# OPTIMIZED VERSIONS FOR PERFORMANCE - WITH LARGER FONTS
 def get_genotype_badge_optimized(genotype):
-    """Optimized genotype badge with minimal DOM operations"""
+    """Optimized genotype badge with minimal DOM operations - LARGER FONTS"""
     if pd.isna(genotype) or genotype in [None, './.', '.', '']:
         return html.Span("./.", className="genotype-badge gt-missing")
 
@@ -516,20 +525,23 @@ def get_genotype_badge_optimized(genotype):
     return html.Span(gt_str, className=gt_classes.get(gt_str, "genotype-badge gt-missing"))
 
 def get_consequence_badge_optimized(consequence):
-    """Optimized consequence badge"""
+    """Optimized consequence badge - LARGER FONTS"""
     if not consequence or pd.isna(consequence):
         consequence = 'variant'
     
     color = CONSEQUENCE_COLORS.get(consequence, 'secondary')
-    return dbc.Badge(consequence, color=color, className="me-1", style={"fontSize": "0.7em"})
+    return dbc.Badge(consequence, color=color, className="me-1", 
+                    style={"fontSize": "0.8em", "padding": "0.4em 0.6em"})  # INCREASED SIZE
 
 def get_clinvar_badge_optimized(classification):
-    """Optimized ClinVar badge"""
+    """Optimized ClinVar badge - LARGER FONTS"""
     if not classification or pd.isna(classification):
-        return dbc.Badge("No annotation", color="light", text_color="dark", style={"fontSize": "0.7em"})
+        return dbc.Badge("No annotation", color="light", text_color="dark", 
+                        style={"fontSize": "0.8em", "padding": "0.4em 0.6em"})  # INCREASED SIZE
     
     color = CLINVAR_COLORS.get(classification, 'secondary')
-    return dbc.Badge(classification, color=color, style={"fontSize": "0.7em"})
+    return dbc.Badge(classification, color=color, 
+                    style={"fontSize": "0.8em", "padding": "0.4em 0.6em"})  # INCREASED SIZE
 
 def format_frequency(frequency):
     """Format allele frequency for display with improved precision"""
