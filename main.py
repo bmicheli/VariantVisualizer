@@ -2,6 +2,7 @@
 Main application file for Variant Visualizer
 Contains the Dash app initialization, layout, and all callbacks
 OPTIMIZED VERSION with performance improvements
+UPDATED WITH GENE PANEL FILTERING
 """
 
 import dash
@@ -16,6 +17,10 @@ from config import *
 from database import *
 from utils import *
 from components import *
+from gene_panels import (
+    init_gene_panels, update_panels_if_needed, get_available_panels, 
+    get_genes_for_panels, get_panel_info, force_update_panels
+)
 
 # =============================================================================
 # APP INITIALIZATION
@@ -25,6 +30,12 @@ from components import *
 print("🔧 Initializing Parquet database...")
 init_parquet_database()
 print("✅ Parquet database structure initialized.")
+
+# Initialize gene panels
+print("🧬 Initializing gene panel system...")
+init_gene_panels()
+update_panels_if_needed()
+print("✅ Gene panel system initialized.")
 
 # Initialize Dash app
 app = dash.Dash(__name__, external_stylesheets=EXTERNAL_STYLESHEETS, suppress_callback_exceptions=True)
@@ -75,6 +86,9 @@ app.layout = html.Div([
         # Sample Selector Panel
         create_sample_selector(),
         
+        # Gene Panel Selector Panel
+        create_gene_panel_selector(),
+        
         # Main Filters Panel (with reset button)
         create_main_filters_panel(),
         
@@ -89,13 +103,19 @@ app.layout = html.Div([
     
     # Modals
     create_comment_modal(),
+    create_panel_info_modal(),
+    
+    # Toast notifications
+    create_update_status_toast(),
     
     # Data stores
     dcc.Store(id="filtered-variants"),
     dcc.Store(id="selected-variant-id"),
     dcc.Store(id="active-filters", data={}),
     dcc.Store(id="sidebar-open", data=False),
-    dcc.Store(id="available-samples", data=[])
+    dcc.Store(id="available-samples", data=[]),
+    dcc.Store(id="selected-gene-panels", data=[]),
+    dcc.Store(id="panel-genes", data=[])
     
 ], style={"minHeight": "100vh", "background": "linear-gradient(135deg, #00BCD4 0%, #4DD0E1 50%, #80E5A3 100%)"})
 
@@ -114,6 +134,132 @@ def update_sample_options(sample_selector_id):
     options = [{"label": sample, "value": sample} for sample in samples]
     return options, samples
 
+# Gene panel options callback
+@app.callback(
+    Output("gene-panel-selector", "options"),
+    [Input("gene-panel-selector", "id"), Input("update-panels-btn", "n_clicks")]
+)
+def update_gene_panel_options(panel_selector_id, update_clicks):
+    """Update gene panel selector options"""
+    return get_available_panels()
+
+# Gene panel selection callback with green gene filter
+@app.callback(
+    [Output("selected-gene-panels", "data"), 
+     Output("panel-genes", "data"),
+     Output("gene-confidence-section", "style"),
+     Output("gene-filter-status", "children")],
+    [Input("gene-panel-selector", "value"), 
+     Input("clear-gene-panels", "n_clicks"),
+     Input("all-genes-btn", "n_clicks"),
+     Input("green-genes-btn", "n_clicks")],
+    [State("selected-gene-panels", "data"),
+     State("all-genes-btn", "n_clicks"),
+     State("green-genes-btn", "n_clicks")],
+    prevent_initial_call=True
+)
+def handle_gene_panel_selection_with_filter(selected_panels, clear_clicks, all_genes_clicks, green_genes_clicks, 
+                                           current_panels, prev_all_clicks, prev_green_clicks):
+    """Handle gene panel selection and green gene filtering"""
+    ctx = callback_context
+    if not ctx.triggered:
+        return current_panels or [], [], {"display": "none"}, "Using all genes (Green, Amber, Red)"
+    
+    trigger = ctx.triggered[0]['prop_id'].split('.')[0]
+    
+    # Clear panels
+    if trigger == "clear-gene-panels":
+        return [], [], {"display": "none"}, "Using all genes (Green, Amber, Red)"
+    
+    # Determine if we should show green gene filter section
+    show_filter_section = False
+    green_genes_only = False
+    
+    # Check if any external panels are selected
+    if selected_panels:
+        try:
+            # Check if any panel is from UK or AU
+            for panel_id in selected_panels:
+                if panel_id.startswith('uk_') or panel_id.startswith('au_'):
+                    show_filter_section = True
+                    break
+        except:
+            pass
+    
+    # Handle filter button clicks
+    if trigger == "green-genes-btn" and green_genes_clicks > (prev_green_clicks or 0):
+        green_genes_only = True
+    elif trigger == "all-genes-btn" and all_genes_clicks > (prev_all_clicks or 0):
+        green_genes_only = False
+    else:
+        # Default to all genes for new panel selection
+        green_genes_only = False
+    
+    # Get genes based on filter
+    if selected_panels:
+        genes = get_genes_for_panels(selected_panels, green_genes_only)
+        logger.info(f"Selected panels: {selected_panels}, Green genes only: {green_genes_only}, Genes: {len(genes)}")
+    else:
+        genes = []
+    
+    # Update status message
+    if green_genes_only:
+        status_msg = "Using green genes only (high confidence)"
+    else:
+        status_msg = "Using all genes (Green, Amber, Red)"
+    
+    # Show/hide filter section
+    filter_section_style = {"display": "block"} if show_filter_section else {"display": "none"}
+    
+    return selected_panels or [], genes, filter_section_style, status_msg
+
+# Panel info modal callback
+@app.callback(
+    [Output("panel-info-modal", "is_open"), Output("panel-info-content", "children")],
+    [Input("panel-info-btn", "n_clicks"), Input("close-panel-info-modal", "n_clicks")],
+    [State("panel-info-modal", "is_open"), State("selected-gene-panels", "data")]
+)
+def handle_panel_info_modal(info_clicks, close_clicks, is_open, selected_panels):
+    """Handle panel info modal"""
+    ctx = callback_context
+    if not ctx.triggered:
+        return False, html.Div()
+    
+    trigger = ctx.triggered[0]['prop_id'].split('.')[0]
+    
+    if trigger == "panel-info-btn" and selected_panels:
+        content = create_panel_info_content(selected_panels, selected_panels)
+        return True, content
+    elif trigger == "close-panel-info-modal":
+        return False, html.Div()
+    
+    return is_open, html.Div()
+
+# Update panels callback
+@app.callback(
+    [Output("update-status-toast", "is_open"), Output("update-status-toast", "children")],
+    [Input("update-panels-btn", "n_clicks")],
+    prevent_initial_call=True
+)
+def handle_panel_update(update_clicks):
+    """Handle panel update button"""
+    if update_clicks:
+        try:
+            force_update_panels()
+            message = html.Div([
+                html.I(className="fas fa-check-circle me-2"),
+                "Gene panels updated successfully!"
+            ])
+            return True, message
+        except Exception as e:
+            message = html.Div([
+                html.I(className="fas fa-exclamation-triangle me-2"),
+                f"Error updating panels: {str(e)}"
+            ])
+            return True, message
+    
+    return False, html.Div()
+
 # Sample selection callback
 @app.callback(
     Output("sample-selector", "value"),
@@ -122,6 +268,18 @@ def update_sample_options(sample_selector_id):
 )
 def handle_clear_samples(clear_clicks):
     """Handle clear samples button"""
+    if clear_clicks:
+        return []
+    return dash.no_update
+
+# Gene panel selection callback
+@app.callback(
+    Output("gene-panel-selector", "value"),
+    [Input("clear-gene-panels", "n_clicks")],
+    prevent_initial_call=True
+)
+def handle_clear_gene_panels(clear_clicks):
+    """Handle clear gene panels button"""
     if clear_clicks:
         return []
     return dash.no_update
@@ -154,18 +312,23 @@ def toggle_sidebar(toggle_clicks, close_clicks, overlay_clicks, apply_clicks, is
     overlay_class = "sidebar-overlay open" if new_state else "sidebar-overlay"
     return sidebar_class, overlay_class, new_state
 
-# UPDATED: Main variants display callback - now responds to apply button
+# UPDATED: Main variants display callback - now responds to apply button and gene panels with green filter
 @app.callback(
     [Output("variants-display", "children"), Output("variant-count", "children"), Output("filtered-variants", "data")],
     [Input("apply-filters-btn", "n_clicks"),  # Primary trigger: apply button
      Input("sample-selector", "value"),       # Also update when samples change
-     Input("active-filters", "data")],        # Also update when preset filters change
+     Input("active-filters", "data"),         # Also update when preset filters change
+     Input("panel-genes", "data"),            # Also update when gene panels change
+     Input("all-genes-btn", "n_clicks"),      # Update when gene filter changes
+     Input("green-genes-btn", "n_clicks")],   # Update when gene filter changes
     [State("search-input", "value"), 
-     State("vaf-range-slider", "value")],     # Get current filter values
+     State("vaf-range-slider", "value"),
+     State("selected-gene-panels", "data")],     # Get current filter values
     prevent_initial_call=False
 )
-def update_variants_display_optimized(apply_clicks, selected_samples, active_filters, search_term, vaf_range):
-    """Optimized variants display - now controlled by apply button"""
+def update_variants_display_optimized(apply_clicks, selected_samples, active_filters, panel_genes, 
+                                    all_genes_clicks, green_genes_clicks, search_term, vaf_range, selected_panels):
+    """Optimized variants display - now controlled by apply button and includes gene panel filtering with green filter"""
     
     # Early return if no samples selected
     if not selected_samples:
@@ -184,6 +347,54 @@ def update_variants_display_optimized(apply_clicks, selected_samples, active_fil
         
         original_count = len(df)
         logger.info(f"Initial variant count: {original_count}")
+        
+        # Apply gene panel filtering FIRST (most selective) with green gene filter
+        if panel_genes and selected_panels:
+            logger.info(f"Applying gene panel filter with {len(panel_genes)} genes")
+            
+            # Determine if green genes only filter is active
+            green_genes_only = green_genes_clicks and green_genes_clicks > (all_genes_clicks or 0)
+            
+            if green_genes_only:
+                # Re-get genes with green filter
+                try:
+                    filtered_panel_genes = get_genes_for_panels(selected_panels, green_genes_only=True)
+                    logger.info(f"Using green genes only: {len(filtered_panel_genes)} genes")
+                    panel_genes = filtered_panel_genes
+                except Exception as e:
+                    logger.error(f"Error getting green genes: {e}")
+            
+            if isinstance(df, pd.DataFrame):
+                df = pl.from_pandas(df)
+            
+            # Create conditions for gene filtering
+            gene_conditions = []
+            
+            # Direct gene symbol match
+            gene_conditions.append(pl.col('gene').is_in(panel_genes))
+            
+            # Also try to match gene names after ID conversion (if gene mapping exists)
+            gene_mapping = load_gene_mapping()
+            if gene_mapping:
+                # Get gene IDs that correspond to our gene names
+                matching_ids = []
+                for gene_name in panel_genes:
+                    for gene_id, mapped_name in gene_mapping.items():
+                        if mapped_name.upper() == gene_name.upper():
+                            matching_ids.append(gene_id)
+                
+                if matching_ids:
+                    gene_conditions.append(pl.col('gene').is_in(matching_ids))
+            
+            # Apply gene filtering
+            if gene_conditions:
+                combined_gene_filter = gene_conditions[0]
+                for condition in gene_conditions[1:]:
+                    combined_gene_filter = combined_gene_filter | condition
+                
+                df = df.filter(combined_gene_filter)
+                filter_type = "green genes only" if green_genes_only else "all genes"
+                logger.info(f"After gene panel filter ({filter_type}): {len(df)} variants")
         
         # Apply basic filters
         df = apply_filters(
@@ -227,6 +438,7 @@ def update_variants_display_optimized(apply_clicks, selected_samples, active_fil
         logger.error(f"Error in update_variants_display: {e}")
         error_display = create_error_component(f"Error loading variants: {str(e)}")
         return error_display, create_variant_count_display(0, 0, 0), []
+
 # NEW: Lazy loading callback for variant details
 @app.callback(
     Output({"type": "variant-details-lazy", "variant": MATCH, "sample": MATCH}, "children"),
@@ -404,6 +616,7 @@ app.clientside_callback(
     function(sidebar_open) {
         setTimeout(() => {
             const sampleContainer = document.querySelector('.sample-selector-container');
+            const panelContainer = document.querySelector('.gene-panel-selector-container');
             const dropdowns = document.querySelectorAll('.dash-dropdown, .Select, div[class*="menu"], div[class*="MenuList"]');
             const sidebar = document.querySelector('.filter-sidebar');
             const overlay = document.querySelector('.sidebar-overlay');
@@ -412,6 +625,9 @@ app.clientside_callback(
                 // Sidebar is open - lower all dropdown z-indexes
                 if (sampleContainer) {
                     sampleContainer.style.zIndex = '100';
+                }
+                if (panelContainer) {
+                    panelContainer.style.zIndex = '100';
                 }
                 dropdowns.forEach(dropdown => {
                     dropdown.style.zIndex = '100';
@@ -428,6 +644,9 @@ app.clientside_callback(
                 // Sidebar is closed - restore normal dropdown z-indexes
                 if (sampleContainer) {
                     sampleContainer.style.zIndex = '1000';
+                }
+                if (panelContainer) {
+                    panelContainer.style.zIndex = '1000';
                 }
                 dropdowns.forEach(dropdown => {
                     dropdown.style.zIndex = '1005';
@@ -483,17 +702,47 @@ app.clientside_callback(
     [Input("active-filters", "data")]
 )
 
-# # Real-time search callback (with debouncing)
-# @app.callback(
-#     Output("search-input", "valid"),
-#     [Input("search-input", "value")],
-#     prevent_initial_call=True
-# )
-# def validate_search_input(search_value):
-#     """Validate search input in real-time"""
-#     if search_value and len(search_value) < 2:
-#         return False
-#     return True
+# Clientside callback for gene filter button styling
+app.clientside_callback(
+    """
+    function(all_clicks, green_clicks) {
+        setTimeout(() => {
+            const allBtn = document.querySelector('#all-genes-btn');
+            const greenBtn = document.querySelector('#green-genes-btn');
+            
+            if (allBtn && greenBtn) {
+                // Determine which button should be active
+                const greenIsActive = green_clicks > (all_clicks || 0);
+                
+                if (greenIsActive) {
+                    // Green genes only is active
+                    greenBtn.classList.remove('btn-outline-success');
+                    greenBtn.classList.add('btn-success');
+                    greenBtn.style.color = 'white';
+                    
+                    allBtn.classList.remove('btn-secondary');
+                    allBtn.classList.add('btn-outline-secondary');
+                    allBtn.style.color = '';
+                } else {
+                    // All genes is active
+                    allBtn.classList.remove('btn-outline-secondary');
+                    allBtn.classList.add('btn-secondary');
+                    allBtn.style.color = 'white';
+                    
+                    greenBtn.classList.remove('btn-success');
+                    greenBtn.classList.add('btn-outline-success');
+                    greenBtn.style.color = '';
+                }
+            }
+        }, 100);
+        
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("gene-filter-status", "style"),
+    [Input("all-genes-btn", "n_clicks"), Input("green-genes-btn", "n_clicks")],
+    prevent_initial_call=True
+)
 
 # =============================================================================
 # APP STARTUP AND RUN
@@ -502,9 +751,10 @@ app.clientside_callback(
 def run_app():
     """Run the Dash application"""
     try:
-        print("🚀 Starting Variant Visualizer...")
+        print("🚀 Starting Variant Visualizer with Gene Panel Support...")
         print("🔗 Access the app at: http://127.0.0.1:8050")
         print("📊 Database status:", "Ready" if os.path.exists(VARIANTS_PARQUET_PATH) else "No data file")
+        print("🧬 Gene panels:", "Loaded" if get_available_panels() else "Empty")
         
         app.run_server(
             debug=True, 

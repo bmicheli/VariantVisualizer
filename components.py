@@ -4,6 +4,7 @@ Contains all display components and layout functions
 OPTIMIZED VERSION with performance improvements
 UPDATED WITH GENE NAME LINKS TO OMIM
 UPDATED WITH LARGER FONTS FOR BETTER READABILITY
+UPDATED WITH GENE PANEL SELECTOR
 """
 
 import dash_bootstrap_components as dbc
@@ -13,6 +14,15 @@ import polars as pl
 from database import get_variant_comments, db
 from utils import *
 from config import *
+
+# Import gene panel functions with fallback
+try:
+    from gene_panels import get_available_panels, get_panel_info
+except ImportError:
+    def get_available_panels():
+        return []
+    def get_panel_info(panel_id):
+        return None
 
 def create_database_status_display():
 	"""Create database status display with optimized queries"""
@@ -194,6 +204,233 @@ def create_beautiful_variant_display(df):
 			html.Tbody(table_rows)
 		], className="variants-table")
 	], className="variants-table-container")
+
+def create_gene_panel_selector():
+	"""Create the gene panel selector component with green gene filter"""
+	available_panels = get_available_panels()
+	
+	return dbc.Card([
+		dbc.CardBody([
+			html.Div([
+				html.Div([
+					html.H6([html.I(className="fas fa-list-alt me-2"), "Gene Panel Selection"], 
+						   className="mb-2 text-primary", style={"fontSize": "1.1rem"}),
+					html.P("Select gene panels to filter variants by specific gene sets:", 
+						  className="text-muted mb-0", style={"fontSize": "14px"})
+				]),
+				html.Div([
+					dcc.Dropdown(
+						id="gene-panel-selector",
+						options=available_panels,
+						placeholder="Select gene panels...",
+						multi=True,
+						searchable=True,
+						clearable=True,
+						style={"minWidth": "400px", "fontSize": "15px"}
+					)
+				], style={"flex": "1", "position": "relative"}),
+				dbc.ButtonGroup([
+					dbc.Button([
+						html.I(className="fas fa-info-circle me-1"),
+						"Panel Info"
+					], id="panel-info-btn", color="outline-info", size="sm",
+					style={"fontSize": "13px"}),
+					dbc.Button([
+						html.I(className="fas fa-sync me-1"),
+						"Update Panels"
+					], id="update-panels-btn", color="outline-secondary", size="sm",
+					style={"fontSize": "13px"}),
+					dbc.Button("Clear", id="clear-gene-panels", color="outline-secondary", size="sm",
+							  style={"fontSize": "13px"})
+				])
+			], style={"display": "flex", "alignItems": "center", "gap": "15px"}),
+			
+			# Green gene filter section
+			html.Div([
+				html.Hr(className="my-3"),
+				html.Div([
+					html.Div([
+						html.Label([
+							html.I(className="fas fa-filter me-2 text-success"),
+							"Gene Confidence Filter"
+						], className="fw-bold mb-2 text-success", style={"fontSize": "14px"}),
+						html.P("For UK/AU panels, choose gene confidence level:", 
+							  className="text-muted mb-2", style={"fontSize": "13px"})
+					]),
+					html.Div([
+						dbc.ButtonGroup([
+							dbc.Button([
+								html.I(className="fas fa-circle me-1 text-success"),
+								"All Genes"
+							], id="all-genes-btn", color="outline-secondary", size="sm",
+							n_clicks=0, style={"fontSize": "12px"}),
+							dbc.Button([
+								html.I(className="fas fa-check-circle me-1 text-success"),
+								"Green Genes Only"
+							], id="green-genes-btn", color="outline-success", size="sm",
+							n_clicks=0, style={"fontSize": "12px"})
+						])
+					], style={"marginLeft": "auto"})
+				], style={"display": "flex", "alignItems": "center", "justifyContent": "space-between"}),
+				
+				# Status indicator
+				html.Div([
+					html.Small(id="gene-filter-status", 
+							  children="Using all genes (Green, Amber, Red)",
+							  className="text-muted", 
+							  style={"fontSize": "12px"})
+				], className="mt-2")
+			], id="gene-confidence-section", style={"display": "none"})  # Hidden by default
+			
+		], style={"padding": "1.5rem"})
+	], className="gene-panel-selector-container mb-3")
+
+def create_panel_info_modal():
+	"""Create modal for displaying panel information"""
+	return dbc.Modal([
+		dbc.ModalHeader([
+			dbc.ModalTitle(id="panel-info-modal-title", children="Panel Information")
+		]),
+		dbc.ModalBody([
+			html.Div(id="panel-info-content")
+		]),
+		dbc.ModalFooter([
+			dbc.Button("Close", id="close-panel-info-modal", className="ms-auto", color="secondary")
+		])
+	], id="panel-info-modal", is_open=False, size="lg")
+
+def create_panel_info_content(panel_ids, selected_panels):
+	"""Create content for panel info modal with gene confidence information"""
+	if not panel_ids:
+		return html.Div([
+			dbc.Alert("No panels selected.", color="info")
+		])
+	
+	panel_info_cards = []
+	total_genes = set()
+	total_green_genes = set()
+	
+	for panel_id in panel_ids:
+		panel_info = get_panel_info(panel_id)
+		if panel_info:
+			# Get genes for this panel
+			try:
+				from gene_panels import get_genes_for_panels
+				all_panel_genes = get_genes_for_panels([panel_id], green_genes_only=False)
+				green_panel_genes = get_genes_for_panels([panel_id], green_genes_only=True)
+				total_genes.update(all_panel_genes)
+				total_green_genes.update(green_panel_genes)
+			except ImportError:
+				all_panel_genes = []
+				green_panel_genes = []
+			
+			source_icon = {
+				'panelapp_uk': '🇬🇧',
+				'panelapp_au': '🇦🇺', 
+				'internal': '🏠'
+			}.get(panel_info.get('source', ''), '📋')
+			
+			# Show gene confidence info for external panels
+			gene_confidence_info = html.Div()
+			if panel_info.get('source') in ['panelapp_uk', 'panelapp_au']:
+				total_count = panel_info.get('gene_count', 0)
+				green_count = panel_info.get('green_gene_count', 0)
+				amber_red_count = total_count - green_count
+				
+				gene_confidence_info = html.Div([
+					html.Div([
+						html.Strong("Gene Confidence: "),
+						dbc.Badge(f"{green_count} Green", color="success", className="me-1"),
+						dbc.Badge(f"{amber_red_count} Amber/Red", color="warning", className="me-1") if amber_red_count > 0 else html.Div()
+					], className="mb-2")
+				])
+			
+			card = dbc.Card([
+				dbc.CardHeader([
+					html.H6([
+						source_icon, " ", panel_info.get('panel_name', 'Unknown Panel')
+					], className="mb-0 text-primary")
+				]),
+				dbc.CardBody([
+					html.Div([
+						html.Strong("Source: "), 
+						dbc.Badge(panel_info.get('source', 'Unknown'), color="info", className="me-2")
+					], className="mb-2"),
+					html.Div([
+						html.Strong("Version: "), 
+						panel_info.get('panel_version', 'Unknown')
+					], className="mb-2"),
+					gene_confidence_info,
+					html.Div([
+						html.A("View Online", 
+							  href=panel_info.get('panel_url', '#'), 
+							  target="_blank",
+							  className="btn btn-sm btn-outline-primary") if panel_info.get('panel_url') else html.Div()
+					])
+				])
+			], className="mb-3")
+			
+			panel_info_cards.append(card)
+	
+	# Enhanced summary with gene confidence info
+	confidence_summary = html.Div()
+	if any(panel_info.get('source') in ['panelapp_uk', 'panelapp_au'] for panel_id in panel_ids for panel_info in [get_panel_info(panel_id)] if panel_info):
+		confidence_summary = html.Div([
+			html.Div([
+				html.Strong("Gene Confidence Summary: "),
+				dbc.Badge(f"{len(total_green_genes)} Green genes", color="success", className="me-1"),
+				dbc.Badge(f"{len(total_genes) - len(total_green_genes)} Amber/Red genes", color="warning", className="me-1") if len(total_genes) > len(total_green_genes) else html.Div()
+			], className="mb-2"),
+			html.Small("Green genes have high confidence for disease association", className="text-muted d-block", style={"fontSize": "12px"})
+		])
+	
+	summary_card = dbc.Card([
+		dbc.CardHeader([
+			html.H6("Summary", className="mb-0 text-success")
+		]),
+		dbc.CardBody([
+			html.Div([
+				html.Strong("Total Panels Selected: "), f"{len(panel_ids)}"
+			], className="mb-2"),
+			html.Div([
+				html.Strong("Total Unique Genes: "), f"{len(total_genes)}"
+			], className="mb-2"),
+			confidence_summary,
+			html.Details([
+				html.Summary("Show All Genes", style={"cursor": "pointer", "fontWeight": "bold"}),
+				html.Div([
+					html.Div([
+						html.H6("Green Genes:", className="text-success mb-2"),
+						html.Div([
+							dbc.Badge(gene, color="success", className="me-1 mb-1") 
+							for gene in sorted(total_green_genes)
+						])
+					], className="mb-3") if total_green_genes else html.Div(),
+					html.Div([
+						html.H6("Amber/Red Genes:", className="text-warning mb-2"),
+						html.Div([
+							dbc.Badge(gene, color="warning", className="me-1 mb-1") 
+							for gene in sorted(total_genes - total_green_genes)
+						])
+					]) if (total_genes - total_green_genes) else html.Div()
+				], style={"maxHeight": "300px", "overflowY": "auto", "marginTop": "10px"})
+			]) if total_genes else html.Div()
+		])
+	], className="mb-3", color="success", outline=True)
+	
+	return html.Div([summary_card] + panel_info_cards)
+
+def create_update_status_toast():
+	"""Create toast notification for panel updates"""
+	return dbc.Toast(
+		id="update-status-toast",
+		header="Panel Update Status",
+		is_open=False,
+		dismissable=True,
+		duration=4000,
+		icon="info",
+		style={"position": "fixed", "top": 66, "right": 10, "width": 350, "zIndex": 9999}
+	)
 
 def create_variant_details_accordion(variant):
 	"""Create detailed information panel for accordion expansion with gene links"""
@@ -551,7 +788,7 @@ def create_sidebar():
 			html.H4([
 				html.I(className="fas fa-sliders-h me-2"),
 				"Advanced Filters"
-			], className="text-primary mb-0", style={"fontSize": "1.3rem"}),  # HARMONISÉ
+			], className="text-primary mb-0", style={"fontSize": "1.3rem"}),
 			dbc.Button([
 				html.I(className="fas fa-times")
 			], 
@@ -568,16 +805,16 @@ def create_sidebar():
 				html.Label([
 					html.I(className="fas fa-search me-2"),
 					"Search Genes, Samples..."
-				], className="fw-bold mb-2 text-primary", style={"fontSize": "15px"}),  # HARMONISÉ
+				], className="fw-bold mb-2 text-primary", style={"fontSize": "15px"}),
 				dbc.Input(
 					id="search-input",
 					placeholder="e.g., BRCA1, Sample001, chr1...",
 					debounce=True,
-					style={"borderRadius": "8px", "fontSize": "15px", "padding": "0.6rem"}  # HARMONISÉ
+					style={"borderRadius": "8px", "fontSize": "15px", "padding": "0.6rem"}
 				),
 				html.Small(
 					"Search by gene name, sample ID, chromosome, or consequence", 
-					className="text-muted mt-1 d-block", style={"fontSize": "13px"}  # HARMONISÉ
+					className="text-muted mt-1 d-block", style={"fontSize": "13px"}
 				)
 			], className="mb-4"),
 			
@@ -586,9 +823,9 @@ def create_sidebar():
 				html.Label([
 					html.I(className="fas fa-chart-line me-2"),
 					"Variant Allele Frequency (VAF)"
-				], className="fw-bold mb-2 text-primary", style={"fontSize": "15px"}),  # HARMONISÉ
+				], className="fw-bold mb-2 text-primary", style={"fontSize": "15px"}),
 				html.Label("Filter by VAF Range:", className="mb-2", 
-						  style={"fontSize": "14px"}),  # HARMONISÉ
+						  style={"fontSize": "14px"}),
 				dcc.RangeSlider(
 					id="vaf-range-slider",
 					min=0,
@@ -600,7 +837,7 @@ def create_sidebar():
 				),
 				html.Small(
 					"Only show variants within the selected VAF range", 
-					className="text-muted mt-2 d-block", style={"fontSize": "13px"}  # HARMONISÉ
+					className="text-muted mt-2 d-block", style={"fontSize": "13px"}
 				)
 			], className="mb-4"),
 			
@@ -614,7 +851,7 @@ def create_sidebar():
 				color="primary", 
 				size="md", 
 				className="w-100 mb-3",
-				style={"borderRadius": "8px", "fontWeight": "bold", "fontSize": "14px", "padding": "0.7rem"}  # HARMONISÉ
+				style={"borderRadius": "8px", "fontWeight": "bold", "fontSize": "14px", "padding": "0.7rem"}
 				),
 				dbc.Button([
 					html.I(className="fas fa-trash me-2"),
@@ -624,7 +861,7 @@ def create_sidebar():
 				color="outline-danger", 
 				size="sm", 
 				className="w-100",
-				style={"borderRadius": "8px", "fontSize": "13px"}  # HARMONISÉ
+				style={"borderRadius": "8px", "fontSize": "13px"}
 				)
 			])
 		], className="p-3")
@@ -639,13 +876,13 @@ def create_header():
 					html.H1([
 						"🧬 ", 
 						html.Span("Variant Visualizer", style={"color": "#0097A7"}),
-					], className="mb-0", style={"fontSize": "2.2rem"}),  # HARMONISÉ
+					], className="mb-0", style={"fontSize": "2.2rem"}),
 				], style={"flex": "1"}),
 				html.Div([
 					# Space for future buttons if needed
 				])
 			], style={"display": "flex", "alignItems": "center", "justifyContent": "space-between"})
-		], style={"padding": "1.5rem"})  # PADDING AUGMENTÉ
+		], style={"padding": "1.5rem"})
 	], className="glass-card mb-3")
 
 def create_sample_selector():
@@ -655,9 +892,9 @@ def create_sample_selector():
 			html.Div([
 				html.Div([
 					html.H6([html.I(className="fas fa-users me-2"), "Sample Selection"], 
-						   className="mb-2 text-primary", style={"fontSize": "1.1rem"}),  # HARMONISÉ
+						   className="mb-2 text-primary", style={"fontSize": "1.1rem"}),
 					html.P("Select samples to display variants:", 
-						  className="text-muted mb-0", style={"fontSize": "14px"})  # HARMONISÉ
+						  className="text-muted mb-0", style={"fontSize": "14px"})
 				]),
 				html.Div([
 					dcc.Dropdown(
@@ -666,15 +903,15 @@ def create_sample_selector():
 						multi=True,
 						searchable=True,
 						clearable=True,
-						style={"minWidth": "300px", "fontSize": "15px"}  # HARMONISÉ
+						style={"minWidth": "300px", "fontSize": "15px"}
 					)
 				], style={"flex": "1", "position": "relative"}),
 				dbc.ButtonGroup([
 					dbc.Button("Clear", id="clear-samples", color="outline-secondary", size="sm",
-							  style={"fontSize": "13px"})  # HARMONISÉ
+							  style={"fontSize": "13px"})
 				])
 			], style={"display": "flex", "alignItems": "center", "gap": "15px"})
-		], style={"padding": "1.5rem"})  # PADDING AUGMENTÉ
+		], style={"padding": "1.5rem"})
 	], className="sample-selector-container mb-3")
 
 def create_main_filters_panel():
@@ -687,13 +924,13 @@ def create_main_filters_panel():
 				], width=3),
 				dbc.Col([
 					html.Div([
-						html.Label("", className="fw-bold me-3 mb-0", # Quick Filters Label
-								  style={"fontSize": "15px"}),  # HARMONISÉ
+						html.Label("", className="fw-bold me-3 mb-0",
+								  style={"fontSize": "15px"}),
 						html.Div([
 							dbc.Button([f["icon"], " ", f["name"]], 
 									id={"type": "preset-filter", "id": f["id"]},
 									color="outline-info", size="sm", className="quick-filter-btn me-2 mb-1", 
-									n_clicks=0, style={"fontSize": "14px"})  # HARMONISÉ
+									n_clicks=0, style={"fontSize": "14px"})
 							for f in PRESET_FILTERS
 						], style={"display": "flex", "flexWrap": "wrap"})
 					])
@@ -701,16 +938,16 @@ def create_main_filters_panel():
 				dbc.Col([
 					dbc.ButtonGroup([
 						dbc.Button("More Filters", id="more-filters-btn", color="outline-secondary", size="sm",
-								  style={"fontSize": "13px"}),  # HARMONISÉ
+								  style={"fontSize": "13px"}),
 						dbc.Button([
 							html.I(className="fas fa-undo me-1"),
 							"Reset"
 						], id="reset-all-btn", color="outline-danger", size="sm", title="Reset all filters",
-						style={"fontSize": "13px"})  # HARMONISÉ
+						style={"fontSize": "13px"})
 					])
 				], width=3, className="text-end")
 			], align="center")
-		], style={"padding": "1.25rem"})  # PADDING AUGMENTÉ
+		], style={"padding": "1.25rem"})
 	], className="main-filters-panel mb-3")
 
 def create_comment_modal():
@@ -800,10 +1037,10 @@ def create_variant_count_display(count, total_count, sample_count):
 	
 	return html.Div([
 		html.H5([
-			html.Span(f"{count:,}", className="text-primary fw-bold", style={"fontSize": "1.6rem"}),  # HARMONISÉ
-			html.Span(" variants", style={"fontSize": "1.2rem"}),  # HARMONISÉ
-			html.Span(sample_text, style={"fontSize": "1rem", "color": "#0097A7"})  # HARMONISÉ
+			html.Span(f"{count:,}", className="text-primary fw-bold", style={"fontSize": "1.6rem"}),
+			html.Span(" variants", style={"fontSize": "1.2rem"}),
+			html.Span(sample_text, style={"fontSize": "1rem", "color": "#0097A7"})
 		], className="mb-0"),
 		html.Small(f"(from {total_count:,} total)", className="text-muted", 
-				  style={"fontSize": "14px"}) if total_count != count else html.Div()  # HARMONISÉ
+				  style={"fontSize": "14px"}) if total_count != count else html.Div()
 	])
