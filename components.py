@@ -415,8 +415,8 @@ def create_panel_info_content(panel_ids, selected_panels):
 					html.Div(confidence_badges, style={"display": "inline-block"})
 				], className="mb-2"),
 				html.Small([
-					"Green genes have high confidence for disease association. ",
-					html.Span(f"Total: {calculated_total} genes", className="fw-bold")
+					"",
+					#html.Span(f"Total: {calculated_total} genes", className="fw-bold")
 				], className="text-muted d-block", style={"fontSize": "12px"})
 			])
 	elif has_external_panels:
