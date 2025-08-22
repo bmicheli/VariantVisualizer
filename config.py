@@ -3,7 +3,7 @@ Configuration file for Variant Visualizer
 Contains all constants, paths, and configuration settings
 OPTIMIZED VERSION with performance improvements
 UPDATED WITH LARGER FONTS FOR BETTER READABILITY
-FIXED: DROPDOWN Z-INDEX PRIORITY
+FIXED: DROPDOWN BEHAVIOR HARMONIZATION
 """
 
 import os
@@ -182,105 +182,52 @@ body {
     z-index: 99998 !important;
 }
 
-/* DROPDOWN Z-INDEX FIXES - MAXIMUM PRIORITY FOR SAMPLE SELECTOR */
-.sample-selector-container {
+/* DROPDOWN FIXES - SIMPLIFIED AND IDENTICAL BEHAVIOR */
+.sample-selector-container,
+.gene-panel-selector-container {
     position: relative !important;
-    z-index: 999999 !important;  /* HIGHEST PRIORITY */
+    z-index: 1000 !important;
 }
 
 .sample-selector-container .Select-menu-outer,
 .sample-selector-container .Select-menu,
-.sample-selector-container .Select-option {
-    z-index: 1000000 !important;  /* EVEN HIGHER */
+.sample-selector-container .Select-option,
+.gene-panel-selector-container .Select-menu-outer,
+.gene-panel-selector-container .Select-menu,
+.gene-panel-selector-container .Select-option {
+    z-index: 1001 !important;
 }
 
-/* GENE PANEL SELECTOR - LOWER PRIORITY */
-.gene-panel-selector-container {
+/* Force identical behavior for both dropdowns */
+#sample-selector,
+#gene-panel-selector {
     position: relative !important;
-    z-index: 10000 !important;  /* LOWER THAN SAMPLE SELECTOR */
+    z-index: 1000 !important;
 }
 
-/* ALL DROPDOWN Z-INDEX RULES - SAMPLE SELECTOR GETS HIGHEST PRIORITY */
-.dash-dropdown {
-    z-index: 999999 !important;
+#sample-selector ~ div,
+#gene-panel-selector ~ div {
+    position: relative !important;
+    z-index: 1001 !important;
 }
 
-.dash-dropdown .Select-menu-outer {
-    z-index: 1000000 !important;
+/* Prevent container expansion */
+#sample-selector .Select-control,
+#gene-panel-selector .Select-control {
+    min-height: 38px !important;
+    max-height: 38px !important;
+    overflow: hidden !important;
 }
 
-.dash-dropdown .Select-menu {
-    z-index: 1000001 !important;
-}
-
-.dash-dropdown .Select-option {
-    z-index: 1000002 !important;
-}
-
-/* REACT SELECT CSS CLASSES - SAMPLE SELECTOR PRIORITY */
+/* Force menu positioning */
 .css-26l3qy-menu,
 .css-1pahdxg-control,
-.css-1hwfws3 {
-    z-index: 1000003 !important;
-}
-
-div[class*="-menu"] {
-    z-index: 1000004 !important;
-}
-
-div[class*="-MenuList"] {
-    z-index: 1000005 !important;
-}
-
+.css-1hwfws3,
+div[class*="-menu"],
+div[class*="-MenuList"],
 div[class*="-option"] {
-    z-index: 1000006 !important;
-}
-
-/* SAMPLE SELECTOR SPECIFIC OVERRIDES */
-#sample-selector {
+    z-index: 1002 !important;
     position: relative !important;
-    z-index: 1050 !important; /* Bootstrap modal z-index starts at 1040 */
-}
-
-#sample-selector ~ div {
-    position: relative !important;
-    z-index: 1051 !important;
-}
-
-#sample-selector [class*="menu"] {
-    position: relative !important;
-    z-index: 1052 !important;
-}
-
-#sample-selector [class*="MenuList"] {
-    position: relative !important;
-    z-index: 1053 !important;
-}
-
-#sample-selector [class*="option"] {
-    position: relative !important;
-    z-index: 1054 !important;
-}
-
-/* GENE PANEL SELECTOR - SLIGHTLY LOWER */
-#gene-panel-selector {
-    z-index: 10000 !important;
-}
-
-#gene-panel-selector ~ div {
-    z-index: 10001 !important;
-}
-
-#gene-panel-selector [class*="menu"] {
-    z-index: 10002 !important;
-}
-
-#gene-panel-selector [class*="MenuList"] {
-    z-index: 10003 !important;
-}
-
-#gene-panel-selector [class*="option"] {
-    z-index: 10004 !important;
 }
 
 /* Main content should be lower */
