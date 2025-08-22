@@ -669,7 +669,7 @@ class GenePanelManager:
         
         return len(self.panels_df.select('panel_id').unique())
     
-    def should_update(self, days_threshold=7):
+    def should_update(self, days_threshold=2):
         """Check if panels should be updated based on last update time"""
         if not self.metadata.get('last_update'):
             return True

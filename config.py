@@ -97,7 +97,7 @@ PRESET_FILTERS = [
     {"name": "High Impact variants", "id": "high_impact", "icon": "⚠️"},
     {"name": "Pathogenic/Likely pathogenic", "id": "pathogenic", "icon": "🔴"},
     {"name": "Heterozygous", "id": "heterozygous", "icon": "🧬"},
-    {"name": "Homozygous", "id": "homozygous", "icon": "🔄"},
+    {"name": "Homozygous", "id": "homozygous", "icon": "🧬"},
 ]
 
 # =============================================================================

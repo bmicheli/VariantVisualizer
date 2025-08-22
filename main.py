@@ -41,7 +41,7 @@ print("✅ Gene panel system initialized.")
 app = dash.Dash(__name__, external_stylesheets=EXTERNAL_STYLESHEETS, suppress_callback_exceptions=True)
 
 # Set app title
-app.title = "Variant Visualizer - ClinVar Focus"
+app.title = "Variant Visualizer"
 
 # Add custom CSS
 app.index_string = f'''
