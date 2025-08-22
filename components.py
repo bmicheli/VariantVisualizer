@@ -5,7 +5,6 @@ OPTIMIZED VERSION with performance improvements
 UPDATED WITH GENE NAME LINKS TO OMIM
 UPDATED WITH LARGER FONTS FOR BETTER READABILITY
 UPDATED WITH GENE PANEL SELECTOR - REMOVED GREEN GENE FILTERING
-FIXED: HARMONIZED SAMPLE SELECTOR AND GENE PANEL SELECTOR BEHAVIOR
 """
 
 import dash_bootstrap_components as dbc
@@ -227,9 +226,9 @@ def create_gene_panel_selector():
 						multi=True,
 						searchable=True,
 						clearable=True,
-						style={"minWidth": "400px", "fontSize": "15px"}
+						style={"minWidth": "400px", "fontSize": "15px", "zIndex": "9999"}
 					)
-				], style={"flex": "1"}, className="gene-panel-selector-container"),
+				], style={"flex": "1", "position": "relative", "zIndex": "9999"}),
 				dbc.ButtonGroup([
 					dbc.Button([
 						html.I(className="fas fa-info-circle me-1"),
@@ -246,7 +245,7 @@ def create_gene_panel_selector():
 				])
 			], style={"display": "flex", "alignItems": "center", "gap": "15px"})
 		], style={"padding": "1.5rem"})
-	], className="glass-card mb-3")
+	], className="glass-card mb-3", style={"position": "relative", "zIndex": "1000"})
 
 def create_panel_info_modal():
 	"""Create modal for displaying panel information"""
@@ -262,191 +261,199 @@ def create_panel_info_modal():
 		])
 	], id="panel-info-modal", is_open=False, size="lg")
 
-from dash import html
-import dash_bootstrap_components as dbc
-
 def create_panel_info_content(panel_ids, selected_panels):
-    """Create content for panel info modal - SIMPLIFIED (no green gene specific info)"""
-    if not panel_ids:
-        return html.Div([
-            dbc.Alert("No panels selected.", color="info")
-        ])
-    
-    panel_info_cards = []
-    total_genes = set()
-    
-    for panel_id in panel_ids:
-        panel_info = get_panel_info(panel_id)
-        if panel_info:
-            # Get genes for this panel
-            try:
-                from gene_panels import get_genes_for_panels
-                all_panel_genes = get_genes_for_panels([panel_id])
-                total_genes.update(all_panel_genes)
-            except ImportError:
-                all_panel_genes = []
-            
-            # Flag icons only
-            source_icon = {
-                'panelapp_uk': '🇬🇧',
-                'panelapp_au': '🇦🇺', 
-                'internal': '🇨🇭'
-            }.get(panel_info.get('source', ''), '📋')
-            
-            # Show gene confidence info for external panels
-            gene_confidence_info = html.Div()
-            if panel_info.get('source') in ['panelapp_uk', 'panelapp_au']:
-                green_count = panel_info.get('green_gene_count', 0)
-                amber_count = panel_info.get('amber_gene_count', 0)
-                red_count = panel_info.get('red_gene_count', 0)
-                unknown_count = panel_info.get('gene_count', 0) - green_count - amber_count - red_count
-                
-                badges = []
-                if green_count > 0:
-                    badges.append(dbc.Badge(f"{green_count} Green", color="success", className="me-1"))
-                if amber_count > 0:
-                    badges.append(dbc.Badge(f"{amber_count} Amber", color="warning", className="me-1"))
-                if red_count > 0:
-                    badges.append(dbc.Badge(f"{red_count} Red", color="danger", className="me-1"))
-                if unknown_count > 0:
-                    badges.append(dbc.Badge(f"{unknown_count} Unknown", color="secondary", className="me-1"))
-                
-                gene_confidence_info = html.Div([
-                    html.Div([
-                        html.Strong("Gene Confidence Distribution: "),
-                        html.Div(badges, style={"display": "inline-block"})
-                    ], className="mb-2")
-                ])
-            
-            # Panel info card
-            card = dbc.Card([
-                dbc.CardHeader([
-                    html.H6([
-                        html.Span(source_icon, style={"marginRight": "6px"}),
-                        html.Span(panel_info.get('panel_name', 'Unknown Panel'))
-                    ], className="mb-0 text-primary")
-                ]),
-                dbc.CardBody([
-                    html.Div([
-                        html.Strong("Source: "), 
-                        dbc.Badge(panel_info.get('source', 'Unknown'), color="info", className="me-2")
-                    ], className="mb-2"),
-                    html.Div([
-                        html.Strong("Version: "), 
-                        panel_info.get('panel_version', 'Unknown')
-                    ], className="mb-2"),
-                    gene_confidence_info,
-                    html.Div([
-                        html.A("View Online", 
-                              href=panel_info.get('panel_url', '#'), 
-                              target="_blank",
-                              className="btn btn-sm btn-outline-primary") if panel_info.get('panel_url') else html.Div()
-                    ])
-                ])
-            ], className="mb-3")
-            
-            panel_info_cards.append(card)
-    
-    # Summary with enhanced confidence information - COUNT UNIQUE GENES CORRECTLY
-    all_genes_with_confidence = {}  # gene_symbol -> confidence_level
-    
-    for panel_id in panel_ids:
-        panel_info = get_panel_info(panel_id)
-        if panel_info:
-            try:
-                from gene_panels import panel_manager
-                panel_genes = panel_manager.panels_df.filter(pl.col('panel_id') == panel_id)
-                
-                for _, row in panel_genes.to_pandas().iterrows():
-                    gene_symbol = row['gene_symbol']
-                    confidence = row['gene_confidence']
-                    
-                    # Prioritize: GREEN > AMBER > RED > UNKNOWN
-                    if gene_symbol in all_genes_with_confidence:
-                        current_conf = all_genes_with_confidence[gene_symbol]
-                        priority = {'GREEN': 4, 'AMBER': 3, 'RED': 2, 'UNKNOWN': 1}
-                        if priority.get(confidence, 0) > priority.get(current_conf, 0):
-                            all_genes_with_confidence[gene_symbol] = confidence
-                    else:
-                        all_genes_with_confidence[gene_symbol] = confidence
-                        
-            except Exception as e:
-                logger.error(f"Error getting unique genes for panel {panel_id}: {e}")
-    
-    # Count unique genes by confidence
-    unique_green_genes = {g for g, c in all_genes_with_confidence.items() if c == 'GREEN'}
-    unique_amber_genes = {g for g, c in all_genes_with_confidence.items() if c == 'AMBER'}
-    unique_red_genes = {g for g, c in all_genes_with_confidence.items() if c == 'RED'}
-    unique_unknown_genes = {g for g, c in all_genes_with_confidence.items() if c == 'UNKNOWN'}
-    
-    total_unique_green = len(unique_green_genes)
-    total_unique_amber = len(unique_amber_genes)
-    total_unique_red = len(unique_red_genes)
-    total_unique_unknown = len(unique_unknown_genes)
-    
-    calculated_total = total_unique_green + total_unique_amber + total_unique_red + total_unique_unknown
-    logger.info(f"Gene confidence math check: {total_unique_green} + {total_unique_amber} + {total_unique_red} + {total_unique_unknown} = {calculated_total}, expected: {len(total_genes)}")
-    
-    # Overall confidence summary
-    confidence_summary = html.Div()
-    has_external_panels = any(panel_info.get('source') in ['panelapp_uk', 'panelapp_au'] 
-                              for panel_id in panel_ids 
-                              for panel_info in [get_panel_info(panel_id)] if panel_info)
-    
-    if has_external_panels and (total_unique_green > 0 or total_unique_amber > 0 or total_unique_red > 0):
-        confidence_badges = []
-        if total_unique_green > 0:
-            confidence_badges.append(dbc.Badge(f"{total_unique_green} Green genes", color="success", className="me-1"))
-        if total_unique_amber > 0:
-            confidence_badges.append(dbc.Badge(f"{total_unique_amber} Amber genes", color="warning", className="me-1"))
-        if total_unique_red > 0:
-            confidence_badges.append(dbc.Badge(f"{total_unique_red} Red genes", color="danger", className="me-1"))
-        if total_unique_unknown > 0:
-            confidence_badges.append(dbc.Badge(f"{total_unique_unknown} Unknown genes", color="secondary", className="me-1"))
-        
-        if confidence_badges:
-            confidence_summary = html.Div([
-                html.Div([
-                    html.Strong("Overall Gene Confidence Summary: "),
-                    html.Div(confidence_badges, style={"display": "inline-block"})
-                ], className="mb-2"),
-                html.Small("", className="text-muted d-block", style={"fontSize": "12px"})
-            ])
-    elif has_external_panels:
-        confidence_summary = html.Div([
-            html.Div([
-                html.Strong("Gene Confidence Summary: "),
-                dbc.Badge(f"All genes marked as Unknown - debugging in progress", color="warning")
-            ], className="mb-2"),
-            html.Small("Check console logs for confidence parsing debug information", className="text-muted d-block", style={"fontSize": "12px"})
-        ])
-    
-    # Summary card
-    summary_card = dbc.Card([
-        dbc.CardHeader([
-            html.H6("Summary", className="mb-0 text-success")
-        ]),
-        dbc.CardBody([
-            html.Div([
-                html.Strong("Total Panels Selected: "), f"{len(panel_ids)}"
-            ], className="mb-2"),
-            html.Div([
-                html.Strong("Total Unique Genes: "), f"{len(total_genes)}"
-            ], className="mb-2"),
-            confidence_summary,
-            html.Details([
-                html.Summary("Show All Genes", style={"cursor": "pointer", "fontWeight": "bold"}),
-                html.Div([
-                    html.Div([
-                        dbc.Badge(gene, color="info", className="me-1 mb-1") 
-                        for gene in sorted(total_genes)
-                    ])
-                ], style={"maxHeight": "300px", "overflowY": "auto", "marginTop": "10px"})
-            ]) if total_genes else html.Div()
-        ])
-    ], className="mb-3", color="success", outline=True)
-    
-    return html.Div([summary_card] + panel_info_cards)
+	"""Create content for panel info modal - SIMPLIFIED (no green gene specific info)"""
+	if not panel_ids:
+		return html.Div([
+			dbc.Alert("No panels selected.", color="info")
+		])
+	
+	panel_info_cards = []
+	total_genes = set()
+	
+	for panel_id in panel_ids:
+		panel_info = get_panel_info(panel_id)
+		if panel_info:
+			# Get genes for this panel
+			try:
+				from gene_panels import get_genes_for_panels
+				all_panel_genes = get_genes_for_panels([panel_id])
+				total_genes.update(all_panel_genes)
+			except ImportError:
+				all_panel_genes = []
+			
+			source_icon = {
+				'panelapp_uk': '🇬🇧',
+				'panelapp_au': '🇦🇺', 
+				'internal': '🇨🇭'
+			}.get(panel_info.get('source', ''), '📋')
+			
+			# Show gene confidence info for external panels
+			gene_confidence_info = html.Div()
+			if panel_info.get('source') in ['panelapp_uk', 'panelapp_au']:
+				green_count = panel_info.get('green_gene_count', 0)
+				amber_count = panel_info.get('amber_gene_count', 0)
+				red_count = panel_info.get('red_gene_count', 0)
+				unknown_count = panel_info.get('gene_count', 0) - green_count - amber_count - red_count
+				
+				badges = []
+				if green_count > 0:
+					badges.append(dbc.Badge(f"{green_count} Green", color="success", className="me-1"))
+				if amber_count > 0:
+					badges.append(dbc.Badge(f"{amber_count} Amber", color="warning", className="me-1"))
+				if red_count > 0:
+					badges.append(dbc.Badge(f"{red_count} Red", color="danger", className="me-1"))
+				if unknown_count > 0:
+					badges.append(dbc.Badge(f"{unknown_count} Unknown", color="secondary", className="me-1"))
+				
+				gene_confidence_info = html.Div([
+					html.Div([
+						html.Strong("Gene Confidence Distribution: "),
+						html.Div(badges, style={"display": "inline-block"})
+					], className="mb-2")
+				])
+			
+			card = dbc.Card([
+				dbc.CardHeader([
+					html.H6([
+						source_icon, " ", panel_info.get('panel_name', 'Unknown Panel')
+					], className="mb-0 text-primary")
+				]),
+				dbc.CardBody([
+					html.Div([
+						html.Strong("Source: "), 
+						dbc.Badge(panel_info.get('source', 'Unknown'), color="info", className="me-2")
+					], className="mb-2"),
+					html.Div([
+						html.Strong("Version: "), 
+						panel_info.get('panel_version', 'Unknown')
+					], className="mb-2"),
+					gene_confidence_info,
+					html.Div([
+						html.A("View Online", 
+							  href=panel_info.get('panel_url', '#'), 
+							  target="_blank",
+							  className="btn btn-sm btn-outline-primary") if panel_info.get('panel_url') else html.Div()
+					])
+				])
+			], className="mb-3")
+			
+			panel_info_cards.append(card)
+	
+	# Summary with enhanced confidence information - COUNT UNIQUE GENES CORRECTLY
+	all_genes_with_confidence = {}  # gene_symbol -> confidence_level
+	
+	for panel_id in panel_ids:
+		panel_info = get_panel_info(panel_id)
+		if panel_info:
+			# Get all genes for this panel to collect unique genes with their confidence
+			try:
+				from gene_panels import panel_manager
+				panel_genes = panel_manager.panels_df.filter(pl.col('panel_id') == panel_id)
+				
+				# For each gene, store its confidence (latest panel wins if conflict)
+				for _, row in panel_genes.to_pandas().iterrows():
+					gene_symbol = row['gene_symbol']
+					confidence = row['gene_confidence']
+					
+					# If gene already exists, prioritize: GREEN > AMBER > RED > UNKNOWN
+					if gene_symbol in all_genes_with_confidence:
+						current_conf = all_genes_with_confidence[gene_symbol]
+						priority = {'GREEN': 4, 'AMBER': 3, 'RED': 2, 'UNKNOWN': 1}
+						if priority.get(confidence, 0) > priority.get(current_conf, 0):
+							all_genes_with_confidence[gene_symbol] = confidence
+					else:
+						all_genes_with_confidence[gene_symbol] = confidence
+						
+			except Exception as e:
+				logger.error(f"Error getting unique genes for panel {panel_id}: {e}")
+	
+	# Count unique genes by confidence
+	unique_green_genes = set()
+	unique_amber_genes = set()
+	unique_red_genes = set()
+	unique_unknown_genes = set()
+	
+	for gene_symbol, confidence in all_genes_with_confidence.items():
+		if confidence == 'GREEN':
+			unique_green_genes.add(gene_symbol)
+		elif confidence == 'AMBER':
+			unique_amber_genes.add(gene_symbol)
+		elif confidence == 'RED':
+			unique_red_genes.add(gene_symbol)
+		elif confidence == 'UNKNOWN':
+			unique_unknown_genes.add(gene_symbol)
+	
+	total_unique_green = len(unique_green_genes)
+	total_unique_amber = len(unique_amber_genes)
+	total_unique_red = len(unique_red_genes)
+	total_unique_unknown = len(unique_unknown_genes)
+	
+	# Verify the math: total unique genes from confidence should match total_genes
+	calculated_total = total_unique_green + total_unique_amber + total_unique_red + total_unique_unknown
+	logger.info(f"Gene confidence math check: {total_unique_green} + {total_unique_amber} + {total_unique_red} + {total_unique_unknown} = {calculated_total}, expected: {len(total_genes)}")
+	
+	# Enhanced summary with confidence distribution - ONLY SHOW IF WE HAVE EXTERNAL PANELS
+	confidence_summary = html.Div()
+	has_external_panels = any(panel_info.get('source') in ['panelapp_uk', 'panelapp_au'] for panel_id in panel_ids for panel_info in [get_panel_info(panel_id)] if panel_info)
+	
+	if has_external_panels and (total_unique_green > 0 or total_unique_amber > 0 or total_unique_red > 0):
+		confidence_badges = []
+		if total_unique_green > 0:
+			confidence_badges.append(dbc.Badge(f"{total_unique_green} Green genes", color="success", className="me-1"))
+		if total_unique_amber > 0:
+			confidence_badges.append(dbc.Badge(f"{total_unique_amber} Amber genes", color="warning", className="me-1"))
+		if total_unique_red > 0:
+			confidence_badges.append(dbc.Badge(f"{total_unique_red} Red genes", color="danger", className="me-1"))
+		if total_unique_unknown > 0:
+			confidence_badges.append(dbc.Badge(f"{total_unique_unknown} Unknown genes", color="secondary", className="me-1"))
+		
+		if confidence_badges:  # Only show if we have badges to show
+			confidence_summary = html.Div([
+				html.Div([
+					html.Strong("Overall Gene Confidence Summary: "),
+					html.Div(confidence_badges, style={"display": "inline-block"})
+				], className="mb-2"),
+				html.Small([
+					"",
+					#html.Span(f"Total: {calculated_total} genes", className="fw-bold")
+				], className="text-muted d-block", style={"fontSize": "12px"})
+			])
+	elif has_external_panels:
+		# Show debug info if we have external panels but no confidence data
+		confidence_summary = html.Div([
+			html.Div([
+				html.Strong("Gene Confidence Summary: "),
+				dbc.Badge(f"All genes marked as Unknown - debugging in progress", color="warning")
+			], className="mb-2"),
+			html.Small("Check console logs for confidence parsing debug information", className="text-muted d-block", style={"fontSize": "12px"})
+		])
+	
+	summary_card = dbc.Card([
+		dbc.CardHeader([
+			html.H6("Summary", className="mb-0 text-success")
+		]),
+		dbc.CardBody([
+			html.Div([
+				html.Strong("Total Panels Selected: "), f"{len(panel_ids)}"
+			], className="mb-2"),
+			html.Div([
+				html.Strong("Total Unique Genes: "), f"{len(total_genes)}"
+			], className="mb-2"),
+			confidence_summary,
+			html.Details([
+				html.Summary("Show All Genes", style={"cursor": "pointer", "fontWeight": "bold"}),
+				html.Div([
+					html.Div([
+						dbc.Badge(gene, color="info", className="me-1 mb-1") 
+						for gene in sorted(total_genes)
+					])
+				], style={"maxHeight": "300px", "overflowY": "auto", "marginTop": "10px"})
+			]) if total_genes else html.Div()
+		])
+	], className="mb-3", color="success", outline=True)
+	
+	return html.Div([summary_card] + panel_info_cards)
 
 def create_update_status_toast():
 	"""Create toast notification for panel updates"""
@@ -914,7 +921,7 @@ def create_header():
 	], className="glass-card mb-3")
 
 def create_sample_selector():
-	"""Create the sample selector component - HARMONIZED WITH GENE PANEL SELECTOR"""
+	"""Create the sample selector component"""
 	return dbc.Card([
 		dbc.CardBody([
 			html.Div([
@@ -931,16 +938,16 @@ def create_sample_selector():
 						multi=True,
 						searchable=True,
 						clearable=True,
-						style={"minWidth": "300px", "fontSize": "15px"}
+						style={"minWidth": "300px", "fontSize": "15px", "zIndex": "9999"}
 					)
-				], style={"flex": "1"}, className="sample-selector-container"),
+				], style={"flex": "1", "position": "relative", "zIndex": "9999"}),
 				dbc.ButtonGroup([
 					dbc.Button("Clear", id="clear-samples", color="outline-secondary", size="sm",
 							  style={"fontSize": "13px"})
 				])
 			], style={"display": "flex", "alignItems": "center", "gap": "15px"})
 		], style={"padding": "1.5rem"})
-	], className="glass-card mb-3")
+	], className="glass-card mb-3", style={"position": "relative", "zIndex": "1000"})
 
 def create_main_filters_panel():
 	"""Create the main filters panel with quick filters and reset button"""

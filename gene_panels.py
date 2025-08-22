@@ -2,7 +2,6 @@
 Gene Panel Management for Variant Visualizer
 Handles fetching, storing, and filtering by gene panels from PanelApp UK, Australia, and internal panels
 UPDATED: REMOVED GREEN GENE FILTERING AND FIXED CONFIDENCE LEVEL PARSING
-UPDATED: SWISS FLAG FOR INTERNAL PANELS
 """
 
 import requests
@@ -14,7 +13,6 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from config import DATA_DIR, logger
-from dash import html
 import time
 from pathlib import Path
 
@@ -578,10 +576,7 @@ class GenePanelManager:
                 }.get(panel['source'], '📋')
                 
                 # Simplified format: Icon + Panel Name
-                label = html.Span([
-                html.Span(source_icon, style={"marginRight": "6px"}),
-                html.Span(panel['panel_name'])
-            ])
+                label = f"{source_icon} {panel['panel_name']}"
                 panel_options.append({
                     'label': label,
                     'value': panel['panel_id']
@@ -674,7 +669,7 @@ class GenePanelManager:
         
         return len(self.panels_df.select('panel_id').unique())
     
-    def should_update(self, days_threshold=2):
+    def should_update(self, days_threshold=7):
         """Check if panels should be updated based on last update time"""
         if not self.metadata.get('last_update'):
             return True
