@@ -3,6 +3,7 @@ Main application file for Variant Visualizer
 Contains the Dash app initialization, layout, and all callbacks
 OPTIMIZED VERSION with performance improvements
 UPDATED WITH GENE PANEL FILTERING - REMOVED GREEN GENE FILTERING
+UPDATED WITH NEW GNOMAD AND CGEN FREQUENCY DISPLAY
 """
 
 import dash
@@ -467,6 +468,10 @@ def load_variant_details_lazy(is_open, filtered_variants):
     for variant_dict in filtered_variants:
         if (variant_dict.get('variant_key') == variant_key and 
             variant_dict.get('SAMPLE') == sample_id):
+            # Ensure max_gnomad_af is available for display
+            if 'max_gnomad_af' not in variant_dict or pd.isna(variant_dict.get('max_gnomad_af')):
+                variant_dict['max_gnomad_af'] = get_max_gnomad_af_from_variant(variant_dict)
+            
             return create_variant_details_accordion(pd.Series(variant_dict))
     
     return html.Div([html.P("Variant details not found.")])

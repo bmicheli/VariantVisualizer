@@ -2,6 +2,7 @@
 Database operations for Variant Visualizer
 Handles Parquet file operations, caching, and data management
 OPTIMIZED VERSION with performance improvements
+UPDATED WITH NEW GNOMAD AND CGEN FREQUENCY FIELDS
 """
 
 import polars as pl
@@ -86,6 +87,10 @@ class OptimizedParquetDB:
             # Collect results
             df = lazy_df.collect()
             
+            # Ensure max_gnomad_af is calculated if missing (backward compatibility)
+            if len(df) > 0:
+                df = self._ensure_max_gnomad_af(df)
+            
             # OPTIMISATION: Conditional comment loading only if necessary
             if len(df) <= MAX_DISPLAY_VARIANTS:
                 if os.path.exists(COMMENTS_PARQUET_PATH):
@@ -119,6 +124,42 @@ class OptimizedParquetDB:
         except Exception as e:
             logger.error(f"Error loading variants: {e}")
             return pl.DataFrame()
+    
+    def _ensure_max_gnomad_af(self, df):
+        """Ensure max_gnomad_af column exists and is calculated correctly"""
+        try:
+            # Check if max_gnomad_af column exists
+            if 'max_gnomad_af' not in df.columns:
+                logger.info("Calculating max_gnomad_af from population-specific frequencies")
+                
+                # Get available gnomAD population columns (excluding ASJ and FIN)
+                gnomad_pop_columns = []
+                for col in ['gnomad_af_afr', 'gnomad_af_amr', 'gnomad_af_eas', 'gnomad_af_nfe', 'gnomad_af_sas']:
+                    if col in df.columns:
+                        gnomad_pop_columns.append(col)
+                
+                if gnomad_pop_columns:
+                    # Calculate max across available population columns
+                    df = df.with_columns([
+                        pl.max_horizontal([pl.col(col) for col in gnomad_pop_columns]).alias('max_gnomad_af')
+                    ])
+                else:
+                    # Fallback to general gnomad_af or 0
+                    if 'gnomad_af' in df.columns:
+                        df = df.with_columns([
+                            pl.col('gnomad_af').alias('max_gnomad_af')
+                        ])
+                    else:
+                        df = df.with_columns([
+                            pl.lit(0.0).alias('max_gnomad_af')
+                        ])
+            
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error calculating max_gnomad_af: {e}")
+            # Add zero column as fallback
+            return df.with_columns([pl.lit(0.0).alias('max_gnomad_af')])
     
     def get_database_stats(self):
         """Get database statistics efficiently"""
@@ -211,6 +252,11 @@ class OptimizedParquetDB:
                 combined_search = combined_search | condition
             
             df = lazy_df.filter(combined_search).limit(limit).collect()
+            
+            # Ensure max_gnomad_af is available
+            if len(df) > 0:
+                df = self._ensure_max_gnomad_af(df)
+            
             return df
             
         except Exception as e:
@@ -355,6 +401,8 @@ def get_variant_by_key(variant_key, sample_id):
         )
         
         if len(variant) > 0:
+            # Ensure max_gnomad_af is available
+            variant = db._ensure_max_gnomad_af(variant)
             return variant.to_pandas().iloc[0].to_dict()
         
         return None
@@ -375,11 +423,14 @@ def export_variants_to_csv(df, filename=None):
         else:
             df_pandas = df
         
-        # Select relevant columns for export
+        # Select relevant columns for export, including new frequency fields
         export_columns = [
             'CHROM', 'POS', 'REF', 'ALT', 'SAMPLE', 'GT', 'VAF', 'gene', 
             'consequence', 'clinvar_sig', 'clinvar_id', 'clinvar_disease',
-            'gnomad_af', 'cadd_score', 'review_status'
+            'gnomad_af', 'max_gnomad_af', 'gnomad_af_afr', 'gnomad_af_amr', 
+            'gnomad_af_asj', 'gnomad_af_eas', 'gnomad_af_fin', 'gnomad_af_nfe', 
+            'gnomad_af_sas', 'ac_gnomad', 'nhomalt_gnomad', 'nhemalt_gnomad',
+            'af_cgen', 'ac_cgen', 'an_cgen', 'cadd_score', 'review_status'
         ]
         
         available_columns = [col for col in export_columns if col in df_pandas.columns]

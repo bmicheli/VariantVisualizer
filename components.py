@@ -5,6 +5,7 @@ OPTIMIZED VERSION with performance improvements
 UPDATED WITH GENE NAME LINKS TO OMIM
 UPDATED WITH LARGER FONTS FOR BETTER READABILITY
 UPDATED WITH GENE PANEL SELECTOR - REMOVED GREEN GENE FILTERING
+UPDATED WITH NEW GNOMAD AND CGEN FREQUENCY DISPLAY
 """
 
 import dash_bootstrap_components as dbc
@@ -23,6 +24,19 @@ except ImportError:
         return []
     def get_panel_info(panel_id):
         return None
+
+def create_gnomad_link(chrom, pos, ref, alt):
+    """Create a link to gnomAD for a variant"""
+    # gnomAD uses 1-based coordinates and specific format
+    gnomad_url = f"https://gnomad.broadinstitute.org/variant/{chrom}-{pos}-{ref}-{alt}?dataset=gnomad_r2_1"
+    
+    return html.A(
+        [html.I(className="fas fa-external-link-alt me-1"), "View in gnomAD"],
+        href=gnomad_url,
+        target="_blank",
+        className="btn btn-outline-primary btn-sm",
+        style={"fontSize": "12px"}
+    )
 
 def create_database_status_display():
 	"""Create database status display with optimized queries"""
@@ -97,16 +111,18 @@ def create_beautiful_variant_display(df):
 		position = f"{variant['CHROM']}:{variant['POS']:}"
 		variant_text = f"{variant['REF']}>{variant['ALT']}"
 		vaf_display = format_percentage(variant.get('VAF', 0))
-		pop_af = variant.get('af', variant.get('gnomad_af', variant.get('population_af', 0)))
-		pop_af_display = format_frequency(pop_af)
+		
+		# Use max_gnomad_af for display (highest excluding asj/fin)
+		max_gnomad_af = variant.get('max_gnomad_af', variant.get('gnomad_af', 0))
+		max_gnomad_af_display = format_frequency(max_gnomad_af)
 		
 		variant_data.append({
 			'variant_key': variant_key,
 			'position': position,
 			'variant_text': variant_text,
 			'vaf_display': vaf_display,
-			'pop_af_display': pop_af_display,
-			'pop_af': pop_af,
+			'max_gnomad_af_display': max_gnomad_af_display,
+			'max_gnomad_af': max_gnomad_af,
 			'variant': variant
 		})
 	
@@ -135,19 +151,19 @@ def create_beautiful_variant_display(df):
 			html.Td([get_consequence_badge_optimized(variant.get('consequence', 'variant'))]),
 			# ClinVar Classification - Optimized - INCREASED FONT SIZE
 			html.Td([get_clinvar_badge_optimized(variant.get('clinvar_sig'))]),
-			# Population Frequency - INCREASED FONT SIZE
+			# Population Frequency (gnomAD max) - INCREASED FONT SIZE
 			html.Td([
-				html.Span(data['pop_af_display'], 
+				html.Span(data['max_gnomad_af_display'], 
 					style={
 						"fontFamily": "monospace", 
 						"fontSize": "13px", 
 						"fontWeight": "bold",
-						"color": "#dc3545" if data['pop_af'] and data['pop_af'] < 0.001 
-							else "#ffc107" if data['pop_af'] and 0.001 <= data['pop_af'] < 0.01 
-							else "#28a745" if data['pop_af'] and data['pop_af'] >= 0.01 
+						"color": "#dc3545" if data['max_gnomad_af'] and data['max_gnomad_af'] < 0.001 
+							else "#ffc107" if data['max_gnomad_af'] and 0.001 <= data['max_gnomad_af'] < 0.01 
+							else "#28a745" if data['max_gnomad_af'] and data['max_gnomad_af'] >= 0.01 
 							else "#6c757d"
 					},
-					title=f"Population Allele Frequency: {data['pop_af_display']}"
+					title=f"Max gnomAD Population Allele Frequency (excluding ASJ/FIN): {data['max_gnomad_af_display']}"
 				)
 			], style={"textAlign": "right"}),
 			# Comments - INCREASED FONT SIZE
@@ -197,7 +213,7 @@ def create_beautiful_variant_display(df):
 					html.Th("VAF", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
 					html.Th("Consequence", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
 					html.Th("ClinVar", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-					html.Th("Pop. AF", className="sortable-header", title="Population Allele Frequency", style={"fontSize": "15px", "fontWeight": "700"}),
+					html.Th("Pop. AF (gnomAD)", className="sortable-header", title="Max Population Allele Frequency from gnomAD (excluding ASJ/FIN)", style={"fontSize": "15px", "fontWeight": "700"}),
 					html.Th("Comments", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
 				])
 			]),
@@ -704,7 +720,7 @@ def create_variant_details_accordion(variant):
 				], className="detail-section uniform-height")
 			], width=4),
 			
-			# Column 3: Population & Additional Scores
+			# Column 3: Population & Additional Scores - UPDATED WITH NEW FREQUENCY INFO
 			dbc.Col([
 				html.Div([
 					html.H6([
@@ -713,46 +729,58 @@ def create_variant_details_accordion(variant):
 					], className="text-primary mb-3"),
 					
 					html.Div([
+						# Display max gnomAD AF (highest excluding ASJ/FIN)
 						html.Div([
-							html.Strong("PrimateAI Score: "),
+							html.Strong("Allele Frequency gnomAD (max): "),
 							html.Span(
-								format_score(variant.get('primateai_score', 0)) if variant.get('primateai_score') else "N/A",
+								format_frequency(variant.get('max_gnomad_af', 0)) if variant.get('max_gnomad_af') else "N/A",
 								className="fw-bold",
-								style={"color": "#28a745" if variant.get('primateai_score', 0) and variant.get('primateai_score', 0) < 0.5 
-									else "#ffc107" if variant.get('primateai_score', 0) and 0.5 <= variant.get('primateai_score', 0) < 0.8 
-									else "#dc3545" if variant.get('primateai_score', 0) and variant.get('primateai_score', 0) >= 0.8 
+								style={"color": "#dc3545" if variant.get('max_gnomad_af', 0) and variant.get('max_gnomad_af', 0) < 0.001 
+									else "#ffc107" if variant.get('max_gnomad_af', 0) and 0.001 <= variant.get('max_gnomad_af', 0) < 0.01 
+									else "#28a745" if variant.get('max_gnomad_af', 0) and variant.get('max_gnomad_af', 0) >= 0.01 
 									else "#6c757d", "fontSize": "14px"}
 							),
 							html.Br(),
-							html.Small(" (>0.8 pathogenic)", className="text-muted")
 						], className="mb-2"),
 						
+						# AC_gnomad
 						html.Div([
-							html.Strong("Population AF: "),
-							html.Span(
-								format_frequency(variant.get('af', 0)) if variant.get('af') else "N/A",
-								className="fw-bold",
-								style={"color": "#dc3545" if variant.get('af', 0) and variant.get('af', 0) < 0.001 
-									else "#ffc107" if variant.get('af', 0) and 0.001 <= variant.get('af', 0) < 0.01 
-									else "#28a745" if variant.get('af', 0) and variant.get('af', 0) >= 0.01 
-									else "#6c757d", "fontSize": "14px"}
-							),
-							html.Br(),
-							html.Small(" (rare <0.1%)", className="text-muted")
+							html.Strong("Allele Count gnomAD: "),
+							html.Span(f"{variant.get('ac_gnomad', 0)}" if pd.notna(variant.get('ac_gnomad')) else "N/A", 
+									style={"fontSize": "14px"})
 						], className="mb-2"),
 						
+						# nhomalt_gnomad
 						html.Div([
-							html.Strong("Allele Count: "),
-							html.Span(f"{variant.get('ac', 0)}" if pd.notna(variant.get('ac')) else "N/A", style={"fontSize": "14px"}),
-							html.Br(),
-							html.Small(" (rare <0.1%)", className="text-muted")
-						], className="mb-2")
+							html.Strong("Number of homozygotes gnomAD: "),
+							html.Span(f"{variant.get('nhomalt_gnomad', 0):.0f}" if pd.notna(variant.get('nhomalt_gnomad')) else "N/A", 
+									style={"fontSize": "14px"})
+						], className="mb-2"),
+						
+						# nhemalt_gnomad  
+						html.Div([
+							html.Strong("Number of hemizygotes gnomAD:"),
+							html.Span(f"{variant.get('nhemalt_gnomad', 0):.0f}" if pd.notna(variant.get('nhemalt_gnomad')) else "N/A", 
+									style={"fontSize": "14px"})
+						], className="mb-2"),
+						
+						# AF_CGEN with calculation
+						html.Div([
+							html.Strong("Allele Frequency CGEN: "),
+							html.Span([
+								f"{format_frequency(variant.get('af_cgen', 0))}" if variant.get('af_cgen') else "N/A",
+								f" ({variant.get('ac_cgen', 0)}/{variant.get('an_cgen', 0)})" if variant.get('ac_cgen') and variant.get('an_cgen') else ""
+							], style={"fontSize": "14px"})
+						], className="mb-3"),
+						
+						# gnomAD link
+						html.Div([
+							create_gnomad_link(variant['CHROM'], variant['POS'], variant['REF'], variant['ALT'])
+						])
 					])
 				], className="detail-section uniform-height")
 			], width=4)
-		]) if any([variant.get('cadd_score'), variant.get('sift_score'), variant.get('polyphen_score'), 
-				variant.get('revel_score'), variant.get('splice_ai'), variant.get('pli_score'), 
-				variant.get('primateai_score'), variant.get('af')]) else html.Div(),
+		]),  # Always show bioinformatics scores section
 			
 		# Comments Section
 		dbc.Row([

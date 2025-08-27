@@ -148,6 +148,19 @@ class VCFToParquetConverter:
             else:
                 annotations[item] = True
 
+        # Parse gnomAD population-specific frequencies
+        gnomad_af_afr = self._safe_float(annotations.get("AF_gnomad_afr", "0"))
+        gnomad_af_amr = self._safe_float(annotations.get("AF_gnomad_amr", "0"))
+        gnomad_af_eas = self._safe_float(annotations.get("AF_gnomad_eas", "0"))
+        gnomad_af_nfe = self._safe_float(annotations.get("AF_gnomad_nfe", "0"))
+        gnomad_af_sas = self._safe_float(annotations.get("AF_gnomad_sas", "0"))
+        gnomad_af_asj = self._safe_float(annotations.get("AF_gnomad_asj", "0"))
+        gnomad_af_fin = self._safe_float(annotations.get("AF_gnomad_fin", "0"))
+
+        # Calculate max gnomAD AF
+        gnomad_afs = [gnomad_af_afr, gnomad_af_amr, gnomad_af_eas, gnomad_af_nfe, gnomad_af_sas,gnomad_af_asj,gnomad_af_fin]
+        max_gnomad_af = max([af for af in gnomad_afs if af > 0], default=0.0)
+
         result = {
             "af": self._safe_float(annotations.get("AF", "0")),
             "ac": self._safe_int(annotations.get("AC", "0")),
@@ -158,14 +171,39 @@ class VCFToParquetConverter:
                 annotations.get("ExonicFunc.HGNC", "variant")
             ),
             "aa_change": self._parse_aa_change(annotations.get("AAChange.HGNC", "")),
-            "gnomad_af": self._safe_float(annotations.get("gnomAD_genome_AF", "0")),
+            
+            # Original gnomAD fields
+            "gnomad_af": self._safe_float(annotations.get("AF_gnomad", "0")),
+            
+            # New gnomAD population-specific fields
+            "gnomad_af_afr": gnomad_af_afr,
+            "gnomad_af_amr": gnomad_af_amr,
+            "gnomad_af_asj": gnomad_af_asj,
+            "gnomad_af_eas": gnomad_af_eas,
+            "gnomad_af_fin": gnomad_af_fin,
+            "gnomad_af_nfe": gnomad_af_nfe,
+            "gnomad_af_sas": gnomad_af_sas,
+            "max_gnomad_af": max_gnomad_af,  # This will be used for display
+            
+            # gnomAD counts
+            "ac_gnomad": self._safe_int(annotations.get("AC_gnomad", "0")),
+            "nhomalt_gnomad": self._safe_float(annotations.get("nhomalt_gnomad", "0")),
+            "nhemalt_gnomad": self._safe_float(annotations.get("nhemalt_gnomad", "0")),
+            
+            # CGEN frequencies
+            "ac_cgen": self._safe_int(annotations.get("AC_CGEN", "0")),
+            "af_cgen": self._safe_float(annotations.get("AF_CGEN", "0")),
+            "an_cgen": self._safe_int(annotations.get("AN_CGEN", "0")),
+            
+            # Prediction scores
             "cadd_score": self._safe_float(annotations.get("CADD_phred", "")),
             "sift_score": self._safe_float(annotations.get("SIFT_score", "")),
             "polyphen_score": self._safe_float(
                 annotations.get("Polyphen2_HVAR_score", "")
             ),
             "revel_score": self._safe_float(annotations.get("REVEL_score", "")),
-            # Correct ClinVar fields
+            
+            # ClinVar fields
             "clinvar_sig": self._parse_clinvar(
                 annotations.get("CLNSIG", "") or annotations.get("CLNSIGCONF", "")
             ),
@@ -178,6 +216,8 @@ class VCFToParquetConverter:
             "clinvar_review_status": annotations.get("CLNREVSTAT")
             or annotations.get("ClinVar_CLNREVSTAT")
             or "",
+            
+            # Additional scores
             "splice_ai": self._safe_float(annotations.get("spliceAI", "0")),
             "pli_score": self._safe_float(annotations.get("pLI", "")),
             "primateai_score": self._safe_float(annotations.get("primateAI", "")),
@@ -190,6 +230,9 @@ class VCFToParquetConverter:
         if not value or value == "." or value == "":
             return 0.0
         try:
+            # Handle space-separated values by taking the first one
+            if " " in str(value):
+                value = str(value).split()[0]
             return float(value.split(",")[0])
         except (ValueError, TypeError):
             return 0.0
@@ -199,7 +242,10 @@ class VCFToParquetConverter:
         if not value or value == "." or value == "":
             return 0
         try:
-            return int(value.split(",")[0])
+            # Handle space-separated values by taking the first one
+            if " " in str(value):
+                value = str(value).split()[0]
+            return int(float(value.split(",")[0]))
         except (ValueError, TypeError):
             return 0
 
@@ -317,6 +363,20 @@ class VCFToParquetConverter:
             "an": pl.Int32,
             "qual": pl.Float32,
             "gnomad_af": pl.Float32,
+            "gnomad_af_afr": pl.Float32,
+            "gnomad_af_amr": pl.Float32,
+            "gnomad_af_asj": pl.Float32,
+            "gnomad_af_eas": pl.Float32,
+            "gnomad_af_fin": pl.Float32,
+            "gnomad_af_nfe": pl.Float32,
+            "gnomad_af_sas": pl.Float32,
+            "max_gnomad_af": pl.Float32,
+            "ac_gnomad": pl.Int32,
+            "nhomalt_gnomad": pl.Float32,
+            "nhemalt_gnomad": pl.Float32,
+            "ac_cgen": pl.Int32,
+            "af_cgen": pl.Float32,
+            "an_cgen": pl.Int32,
             "cadd_score": pl.Float32,
             "sift_score": pl.Float32,
             "polyphen_score": pl.Float32,
@@ -383,6 +443,20 @@ class VCFToParquetConverter:
                         "an": int(annotations.get("an", 0)),
                         "qual": float(annotations.get("qual", 0.0)),
                         "gnomad_af": float(annotations.get("gnomad_af", 0.0)),
+                        "gnomad_af_afr": float(annotations.get("gnomad_af_afr", 0.0)),
+                        "gnomad_af_amr": float(annotations.get("gnomad_af_amr", 0.0)),
+                        "gnomad_af_asj": float(annotations.get("gnomad_af_asj", 0.0)),
+                        "gnomad_af_eas": float(annotations.get("gnomad_af_eas", 0.0)),
+                        "gnomad_af_fin": float(annotations.get("gnomad_af_fin", 0.0)),
+                        "gnomad_af_nfe": float(annotations.get("gnomad_af_nfe", 0.0)),
+                        "gnomad_af_sas": float(annotations.get("gnomad_af_sas", 0.0)),
+                        "max_gnomad_af": float(annotations.get("max_gnomad_af", 0.0)),
+                        "ac_gnomad": int(annotations.get("ac_gnomad", 0)),
+                        "nhomalt_gnomad": float(annotations.get("nhomalt_gnomad", 0.0)),
+                        "nhemalt_gnomad": float(annotations.get("nhemalt_gnomad", 0.0)),
+                        "ac_cgen": int(annotations.get("ac_cgen", 0)),
+                        "af_cgen": float(annotations.get("af_cgen", 0.0)),
+                        "an_cgen": int(annotations.get("an_cgen", 0)),
                         "cadd_score": float(annotations.get("cadd_score", 0.0)),
                         "sift_score": float(annotations.get("sift_score", 0.0)),
                         "polyphen_score": float(annotations.get("polyphen_score", 0.0)),
@@ -426,6 +500,20 @@ class VCFToParquetConverter:
             "an": pl.Int32,
             "qual": pl.Float32,
             "gnomad_af": pl.Float32,
+            "gnomad_af_afr": pl.Float32,
+            "gnomad_af_amr": pl.Float32,
+            "gnomad_af_asj": pl.Float32,
+            "gnomad_af_eas": pl.Float32,
+            "gnomad_af_fin": pl.Float32,
+            "gnomad_af_nfe": pl.Float32,
+            "gnomad_af_sas": pl.Float32,
+            "max_gnomad_af": pl.Float32,
+            "ac_gnomad": pl.Int32,
+            "nhomalt_gnomad": pl.Float32,
+            "nhemalt_gnomad": pl.Float32,
+            "ac_cgen": pl.Int32,
+            "af_cgen": pl.Float32,
+            "an_cgen": pl.Int32,
             "cadd_score": pl.Float32,
             "sift_score": pl.Float32,
             "polyphen_score": pl.Float32,

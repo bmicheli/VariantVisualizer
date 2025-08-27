@@ -4,6 +4,7 @@ Contains badge creation, filtering, and data processing functions
 UPDATED WITH GENE NAME MAPPING AND OMIM LINKS - HANDLES MULTIPLE GENES
 UPDATED WITH LARGER FONTS FOR BETTER READABILITY
 SIMPLIFIED: REMOVED GREEN GENE FILTERING FROM APPLY_FILTERS
+UPDATED WITH NEW GNOMAD AND CGEN FREQUENCY HANDLING
 """
 
 import dash_bootstrap_components as dbc
@@ -558,6 +559,49 @@ def format_score(score):
         return "N/A"
     return f"{score:.3f}"
 
+def get_max_gnomad_af_from_variant(variant):
+    """Get the maximum gnomAD AF (excluding ASJ/FIN) from a variant record"""
+    try:
+        # Check if max_gnomad_af is already calculated
+        if 'max_gnomad_af' in variant and pd.notna(variant['max_gnomad_af']) and variant['max_gnomad_af'] > 0:
+            return variant['max_gnomad_af']
+        
+        # Calculate from population-specific frequencies
+        gnomad_afs = []
+        for pop in ['gnomad_af_afr', 'gnomad_af_amr', 'gnomad_af_eas', 'gnomad_af_nfe', 'gnomad_af_sas']:
+            if pop in variant and pd.notna(variant[pop]) and variant[pop] > 0:
+                gnomad_afs.append(variant[pop])
+        
+        if gnomad_afs:
+            return max(gnomad_afs)
+        
+        # Fallback to general gnomad_af
+        if 'gnomad_af' in variant and pd.notna(variant['gnomad_af']):
+            return variant['gnomad_af']
+        
+        return 0.0
+        
+    except Exception as e:
+        logger.error(f"Error calculating max gnomAD AF: {e}")
+        return 0.0
+
+def format_cgen_frequency_with_counts(af, ac, an):
+    """Format CGEN frequency with allele counts"""
+    try:
+        if pd.isna(af) or af == 0:
+            af_str = "N/A"
+        else:
+            af_str = format_frequency(af)
+        
+        if pd.notna(ac) and pd.notna(an) and ac > 0 and an > 0:
+            return f"{af_str} ({int(ac)} / {int(an)})"
+        else:
+            return af_str
+            
+    except Exception as e:
+        logger.error(f"Error formatting CGEN frequency: {e}")
+        return "N/A"
+
 def validate_variant_data(variant_dict):
     """Validate variant data dictionary"""
     required_fields = ['CHROM', 'POS', 'REF', 'ALT', 'SAMPLE']
@@ -632,6 +676,12 @@ def sort_variants(df, sort_by='position', ascending=True):
         df = df.sort('clinvar_sig', descending=not ascending)
     elif sort_by == 'vaf':
         df = df.sort('VAF', descending=not ascending)
+    elif sort_by == 'gnomad_af':
+        # Sort by max_gnomad_af if available, otherwise gnomad_af
+        if 'max_gnomad_af' in df.columns:
+            df = df.sort('max_gnomad_af', descending=not ascending)
+        else:
+            df = df.sort('gnomad_af', descending=not ascending)
     
     return df
 
@@ -701,7 +751,7 @@ def summarize_variants_by_gene(df):
             pl.col('SAMPLE').n_unique().alias('samples_affected'),
             pl.col('consequence').mode().first().alias('most_common_consequence'),
             pl.col('clinvar_sig').filter(pl.col('clinvar_sig').is_not_null()).mode().first().alias('most_common_clinvar'),
-            pl.col('gnomad_af').max().alias('max_gnomad_af'),
+            pl.col('max_gnomad_af').max().alias('max_gnomad_af') if 'max_gnomad_af' in df.columns else pl.col('gnomad_af').max().alias('max_gnomad_af'),
             pl.col('cadd_score').max().alias('max_cadd_score')
         ])
         .sort('variant_count', descending=True)
