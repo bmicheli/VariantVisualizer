@@ -112,7 +112,7 @@ def create_beautiful_variant_display(df):
 		variant_text = f"{variant['REF']}>{variant['ALT']}"
 		vaf_display = format_percentage(variant.get('VAF', 0))
 		
-		# Use max_gnomad_af for display (highest excluding asj/fin)
+		# Use max_gnomad_af for display
 		max_gnomad_af = variant.get('max_gnomad_af', variant.get('gnomad_af', 0))
 		max_gnomad_af_display = format_frequency(max_gnomad_af)
 		
@@ -163,7 +163,7 @@ def create_beautiful_variant_display(df):
 							else "#28a745" if data['max_gnomad_af'] and data['max_gnomad_af'] >= 0.01 
 							else "#6c757d"
 					},
-					title=f"Max gnomAD Population Allele Frequency (excluding ASJ/FIN): {data['max_gnomad_af_display']}"
+					title=f"Max gnomAD Population Allele Frequency: {data['max_gnomad_af_display']}"
 				)
 			], style={"textAlign": "right"}),
 			# Comments - INCREASED FONT SIZE
@@ -213,7 +213,7 @@ def create_beautiful_variant_display(df):
 					html.Th("VAF", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
 					html.Th("Consequence", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
 					html.Th("ClinVar", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-					html.Th("Pop. AF (gnomAD)", className="sortable-header", title="Max Population Allele Frequency from gnomAD (excluding ASJ/FIN)", style={"fontSize": "15px", "fontWeight": "700"}),
+					html.Th("AF (gnomAD)", className="sortable-header", title="Max Population Allele Frequency from gnomAD", style={"fontSize": "15px", "fontWeight": "700"}),
 					html.Th("Comments", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
 				])
 			]),
@@ -511,25 +511,20 @@ def create_variant_details_accordion(variant):
 							html.Strong("Position: "),
 							html.Span(f"{variant['CHROM']}:{variant['POS']:}", style={"fontSize": "14px"})
 						], className="mb-2"),
-						
+
 						html.Div([
-							html.Strong("Reference: "),
-							html.Span(variant['REF'], style={"fontSize": "14px"})
+							html.Strong("Consequence: "),
+							get_consequence_badge(variant.get('consequence', 'variant'))
 						], className="mb-2"),
-						
-						html.Div([
-							html.Strong("Alternate: "),
-							html.Span(variant['ALT'], style={"fontSize": "14px"})
-						], className="mb-2"),
-						
+
 						html.Div([
 							html.Strong("Genotype: "),
 							get_genotype_badge(variant.get('GT', './.'))
 						], className="mb-2"),
-						
+
 						html.Div([
-							html.Strong("Quality: "),
-							html.Span(f"{variant.get('QUAL', 0):.1f}" if pd.notna(variant.get('QUAL')) else "N/A", style={"fontSize": "14px"})
+							html.Strong("AA Change: "),
+							html.Span(variant.get('aa_change', 'N/A'), style={"fontSize": "14px"})
 						], className="mb-2"),
 
 					])
@@ -559,16 +554,11 @@ def create_variant_details_accordion(variant):
 							html.Strong("Allelic Depth: "),
 							html.Span(variant.get('AD', 'N/A'), style={"fontSize": "14px"})
 						], className="mb-2"),
-						
+
 						html.Div([
-							html.Strong("Genotype Quality: "),
-							html.Span(f"{variant.get('GQ', 0):.1f}" if pd.notna(variant.get('GQ')) else "N/A", style={"fontSize": "14px"})
+							html.Strong("Quality: "),
+							html.Span(f"{variant.get('QUAL', 0):.1f}" if pd.notna(variant.get('QUAL')) else "N/A", style={"fontSize": "14px"})
 						], className="mb-2"),
-						
-						html.Div([
-							html.Strong("Sample ID: "),
-							html.Span(sample_id, style={"fontSize": "14px"})
-						], className="mb-2")
 					])
 				], className="detail-section uniform-height")
 			], width=4),
@@ -591,21 +581,7 @@ def create_variant_details_accordion(variant):
 							html.Strong("Gene: ", style={"marginRight": "8px"}),
 							create_gene_link(variant.get('gene', 'UNKNOWN'))
 						], className="mb-2", style={"display": "flex", "alignItems": "center", "flexWrap": "wrap"}),
-						
-						html.Div([
-							html.Strong("Consequence: "),
-							get_consequence_badge(variant.get('consequence', 'variant'))
-						], className="mb-2"),
-						
-						html.Div([
-							html.Strong("AA Change: "),
-							html.Span(variant.get('aa_change', 'N/A'), style={"fontSize": "14px"})
-						], className="mb-2"),
-						
-						html.Div([
-							html.Strong("gnomAD AF: "),
-							html.Span(format_frequency(variant.get('gnomad_af', 0)), style={"fontSize": "14px"})
-						], className="mb-2")
+
 					])
 				], className="detail-section uniform-height")
 			], width=4)
@@ -725,11 +701,11 @@ def create_variant_details_accordion(variant):
 				html.Div([
 					html.H6([
 						html.I(className="fas fa-globe me-2"),
-						"Population & Other Scores"
+						"Population Data"
 					], className="text-primary mb-3"),
 					
 					html.Div([
-						# Display max gnomAD AF (highest excluding ASJ/FIN)
+						# Display max gnomAD AF
 						html.Div([
 							html.Strong("Allele Frequency gnomAD (max): "),
 							html.Span(
@@ -742,27 +718,44 @@ def create_variant_details_accordion(variant):
 							)
 						], className="mb-2"),
 						
-						# Combined gnomAD counts (AC, homozygotes, hemizygotes)
+						# Allele Count gnomAD with homo/hemi counts on separate lines
 						html.Div([
 							html.Strong("Allele Count gnomAD: "),
-							html.Span([
+							html.Span(
 								f"{variant.get('ac_gnomad', 0)}" if pd.notna(variant.get('ac_gnomad')) else "N/A",
-								html.Span(" (", style={"fontSize": "14px"}),
-								html.Strong("# of homo : "),
-								f"{variant.get('nhomalt_gnomad', 0):.0f}" if pd.notna(variant.get('nhomalt_gnomad')) else "N/A",
-								html.Strong(" # of hemi : "),
-								f"{variant.get('nhemalt_gnomad', 0):.0f}" if pd.notna(variant.get('nhemalt_gnomad')) else "N/A",
-								html.Span(")", style={"fontSize": "14px"})
+								style={"fontSize": "14px"}
+							),
+							html.Br(),
+							html.Span([
+								html.Span("             • ", style={"fontSize": "14px"}),
+								html.Strong("NB of homo : "),
+								f"{variant.get('nhomalt_gnomad', 0):.0f}" if pd.notna(variant.get('nhomalt_gnomad')) else "N/A"
+							], style={"fontSize": "14px"}),
+							html.Br(),
+							html.Span([
+								html.Span("             • ", style={"fontSize": "14px"}),
+								html.Strong("NB of hemi : "),
+								f"{variant.get('nhemalt_gnomad', 0):.0f}" if pd.notna(variant.get('nhemalt_gnomad')) else "N/A"
 							], style={"fontSize": "14px"})
 						], className="mb-2"),
 						
-						# AF_CGEN with calculation
+						# AF_CGEN with calculation and color coding (only frequency colored)
 						html.Div([
 							html.Strong("Allele Frequency CGEN: "),
 							html.Span([
-								f"{format_frequency(variant.get('af_cgen', 0))}" if variant.get('af_cgen') else "N/A",
-								f" ({variant.get('ac_cgen', 0)}/{variant.get('an_cgen', 0)})" if variant.get('ac_cgen') and variant.get('an_cgen') else ""
-							], style={"fontSize": "14px"})
+								html.Span(
+									f"{format_frequency(variant.get('af_cgen', 0))}" if variant.get('af_cgen') else "N/A",
+									className="fw-bold",
+									style={"color": "#dc3545" if variant.get('af_cgen', 0) and variant.get('af_cgen', 0) < 0.001 
+										else "#ffc107" if variant.get('af_cgen', 0) and 0.001 <= variant.get('af_cgen', 0) < 0.01 
+										else "#28a745" if variant.get('af_cgen', 0) and variant.get('af_cgen', 0) >= 0.01 
+										else "#6c757d", "fontSize": "14px"}
+								),
+								html.Span(
+									f" ({variant.get('ac_cgen', 0)}/{variant.get('an_cgen', 0)})" if variant.get('ac_cgen') and variant.get('an_cgen') else "",
+									style={"fontSize": "14px", "color": "#6c757d"}
+								)
+							])
 						], className="mb-3"),
 						
 						# gnomAD link
