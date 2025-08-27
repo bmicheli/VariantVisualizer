@@ -739,29 +739,21 @@ def create_variant_details_accordion(variant):
 									else "#ffc107" if variant.get('max_gnomad_af', 0) and 0.001 <= variant.get('max_gnomad_af', 0) < 0.01 
 									else "#28a745" if variant.get('max_gnomad_af', 0) and variant.get('max_gnomad_af', 0) >= 0.01 
 									else "#6c757d", "fontSize": "14px"}
-							),
-							html.Br(),
+							)
 						], className="mb-2"),
 						
-						# AC_gnomad
+						# Combined gnomAD counts (AC, homozygotes, hemizygotes)
 						html.Div([
 							html.Strong("Allele Count gnomAD: "),
-							html.Span(f"{variant.get('ac_gnomad', 0)}" if pd.notna(variant.get('ac_gnomad')) else "N/A", 
-									style={"fontSize": "14px"})
-						], className="mb-2"),
-						
-						# nhomalt_gnomad
-						html.Div([
-							html.Strong("Number of homozygotes gnomAD: "),
-							html.Span(f"{variant.get('nhomalt_gnomad', 0):.0f}" if pd.notna(variant.get('nhomalt_gnomad')) else "N/A", 
-									style={"fontSize": "14px"})
-						], className="mb-2"),
-						
-						# nhemalt_gnomad  
-						html.Div([
-							html.Strong("Number of hemizygotes gnomAD:"),
-							html.Span(f"{variant.get('nhemalt_gnomad', 0):.0f}" if pd.notna(variant.get('nhemalt_gnomad')) else "N/A", 
-									style={"fontSize": "14px"})
+							html.Span([
+								f"{variant.get('ac_gnomad', 0)}" if pd.notna(variant.get('ac_gnomad')) else "N/A",
+								html.Span(" (", style={"fontSize": "14px"}),
+								html.Strong("# of homo : "),
+								f"{variant.get('nhomalt_gnomad', 0):.0f}" if pd.notna(variant.get('nhomalt_gnomad')) else "N/A",
+								html.Strong(" # of hemi : "),
+								f"{variant.get('nhemalt_gnomad', 0):.0f}" if pd.notna(variant.get('nhemalt_gnomad')) else "N/A",
+								html.Span(")", style={"fontSize": "14px"})
+							], style={"fontSize": "14px"})
 						], className="mb-2"),
 						
 						# AF_CGEN with calculation
