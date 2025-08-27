@@ -1,11 +1,5 @@
 """
 UI Components for Variant Visualizer
-Contains all display components and layout functions
-OPTIMIZED VERSION with performance improvements
-UPDATED WITH GENE NAME LINKS TO OMIM
-UPDATED WITH LARGER FONTS FOR BETTER READABILITY
-UPDATED WITH GENE PANEL SELECTOR - REMOVED GREEN GENE FILTERING
-UPDATED WITH NEW GNOMAD AND CGEN FREQUENCY DISPLAY
 """
 
 import dash_bootstrap_components as dbc
@@ -37,6 +31,73 @@ def create_gnomad_link(chrom, pos, ref, alt):
         className="btn btn-outline-primary btn-sm",
         style={"fontSize": "12px"}
     )
+
+def create_aa_change_display(aa_change_str, variant_key, sample_id):
+    """Create interactive display for AA changes with multiple transcripts and gene name mapping"""
+    if not aa_change_str or aa_change_str in ['N/A', 'p.?', '.']:
+        return html.Span("N/A", style={"fontSize": "14px", "color": "#6c757d"})
+    
+    # Split by comma to get multiple transcripts
+    aa_changes = [change.strip() for change in str(aa_change_str).split(',') if change.strip()]
+
+    # Extract gene ID from first part of each transcript and map to gene name
+    aa_changes_mapped = []
+    for change in aa_changes:
+        parts = change.split(':', 1)  # split only at first colon
+        gene_id = parts[0]
+        rest = parts[1] if len(parts) > 1 else ''
+        gene_name = get_gene_name_from_id(gene_id)
+        aa_changes_mapped.append(f"{gene_name}:{rest}" if rest else gene_name)
+
+    if len(aa_changes_mapped) <= 1:
+        # Single transcript - display normally
+        return html.Span(aa_changes_mapped[0], style={"fontSize": "14px"})
+    
+    # Multiple transcripts - create interactive display
+    first_change = aa_changes_mapped[0]
+    other_changes = aa_changes_mapped[1:]
+    
+    return html.Div([
+        html.Span([
+            html.Span(first_change, style={"fontSize": "14px", "fontWeight": "500"}),
+            html.Span(
+                f" (+{len(other_changes)} more)",
+                style={
+                    "fontSize": "12px", 
+                    "color": "#0097A7", 
+                    "fontWeight": "bold",
+                    "marginLeft": "8px",
+                    "cursor": "pointer",
+                    "textDecoration": "underline"
+                },
+                title="Click to view other transcripts"
+            )
+        ], 
+        id={"type": "aa-change-toggle", "variant": variant_key, "sample": sample_id},
+        style={"cursor": "pointer"}),
+
+        dbc.Collapse([
+            dbc.Card([
+                dbc.CardBody([
+                    html.H6("Other Transcripts:", className="text-primary mb-2", style={"fontSize": "13px"}),
+                    html.Div([
+                        html.Div([
+                            html.I(className="fas fa-dna me-2", style={"color": "#0097A7", "fontSize": "11px"}),
+                            html.Span(change, style={"fontSize": "13px"})
+                        ], className="mb-1")
+                        for change in other_changes
+                    ])
+                ], style={"padding": "12px"})
+            ], style={
+                "marginTop": "8px", 
+                "border": "1px solid #e9ecef",
+                "borderRadius": "6px",
+                "backgroundColor": "#f8f9fa"
+            })
+        ],
+        id={"type": "aa-change-collapse", "variant": variant_key, "sample": sample_id},
+        is_open=False)
+    ])
 
 def create_database_status_display():
 	"""Create database status display with optimized queries"""
@@ -484,7 +545,7 @@ def create_update_status_toast():
 	)
 
 def create_variant_details_accordion(variant):
-	"""Create detailed information panel for accordion expansion with gene links"""
+	"""Create detailed information panel for accordion expansion with gene links and interactive AA changes"""
 	
 	variant_key = variant.get('variant_key', f"{variant['CHROM']}:{variant['POS']}:{variant['REF']}:{variant['ALT']}")
 	sample_id = variant['SAMPLE']
@@ -524,7 +585,11 @@ def create_variant_details_accordion(variant):
 
 						html.Div([
 							html.Strong("AA Change: "),
-							html.Span(variant.get('aa_change', 'N/A'), style={"fontSize": "14px"})
+							create_aa_change_display(
+								variant.get('aa_change', 'N/A'), 
+								variant_key, 
+								sample_id
+							)
 						], className="mb-2"),
 
 					])

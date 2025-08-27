@@ -1,9 +1,5 @@
 """
 Main application file for Variant Visualizer
-Contains the Dash app initialization, layout, and all callbacks
-OPTIMIZED VERSION with performance improvements
-UPDATED WITH GENE PANEL FILTERING - REMOVED GREEN GENE FILTERING
-UPDATED WITH NEW GNOMAD AND CGEN FREQUENCY DISPLAY
 """
 
 import dash
@@ -475,6 +471,19 @@ def load_variant_details_lazy(is_open, filtered_variants):
             return create_variant_details_accordion(pd.Series(variant_dict))
     
     return html.Div([html.P("Variant details not found.")])
+
+# NEW: AA Change toggle callback
+@app.callback(
+    Output({"type": "aa-change-collapse", "variant": MATCH, "sample": MATCH}, "is_open"),
+    [Input({"type": "aa-change-toggle", "variant": MATCH, "sample": MATCH}, "n_clicks")],
+    [State({"type": "aa-change-collapse", "variant": MATCH, "sample": MATCH}, "is_open")],
+    prevent_initial_call=True
+)
+def toggle_aa_change_details(n_clicks, is_open):
+    """Toggle AA change details collapse"""
+    if n_clicks:
+        return not is_open
+    return is_open
 
 # Reset all filters callback - MAIN PANEL RESET BUTTON
 @app.callback(

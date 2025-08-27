@@ -1,10 +1,5 @@
 """
 Utility functions for Variant Visualizer
-Contains badge creation, filtering, and data processing functions
-UPDATED WITH GENE NAME MAPPING AND OMIM LINKS - HANDLES MULTIPLE GENES
-UPDATED WITH LARGER FONTS FOR BETTER READABILITY
-SIMPLIFIED: REMOVED GREEN GENE FILTERING FROM APPLY_FILTERS
-UPDATED WITH NEW GNOMAD AND CGEN FREQUENCY HANDLING
 """
 
 import dash_bootstrap_components as dbc
@@ -55,23 +50,47 @@ def load_gene_mapping():
     
     return _gene_mapping
 
-def get_gene_name_from_id(gene_id):
-    """Convert HGNC ID to gene name - IMPROVED VERSION"""
-    if pd.isna(gene_id) or gene_id in [None, '', 'UNKNOWN']:
-        return gene_id if gene_id else 'UNKNOWN'
+def get_gene_name_from_id(gene_id_or_name):
+    """Convert HGNC ID to gene name with improved handling - UPDATED VERSION"""
+    if pd.isna(gene_id_or_name) or gene_id_or_name in [None, '', 'UNKNOWN']:
+        return 'UNKNOWN'
+    
+    gene_input = str(gene_id_or_name).strip()
+    
+    # If it's empty after stripping, return UNKNOWN
+    if not gene_input:
+        return 'UNKNOWN'
     
     gene_mapping = load_gene_mapping()
-    gene_id_str = str(gene_id)
     
-    # First check if it's already a gene name (not an ID)
-    if gene_mapping and gene_id_str not in gene_mapping:
-        # Check if the value is already a gene name
-        for gid, gname in gene_mapping.items():
-            if gname.upper() == gene_id_str.upper():
-                return gene_id_str  # It's already a gene name
+    # If no mapping available, return the original value
+    if not gene_mapping:
+        return gene_input
     
-    # Return gene name if found in mapping, otherwise return original ID
-    return gene_mapping.get(gene_id_str, gene_id_str)
+    # First check if it's a gene ID that we can map
+    if gene_input in gene_mapping:
+        mapped_name = gene_mapping[gene_input]
+        logger.debug(f"Mapped gene ID {gene_input} -> {mapped_name}")
+        return mapped_name
+    
+    # Check if the value is already a gene name (reverse lookup)
+    for gene_id, gene_name in gene_mapping.items():
+        if gene_name.upper() == gene_input.upper():
+            logger.debug(f"Gene {gene_input} is already a gene name")
+            return gene_input  # It's already a gene name
+    
+    # If it looks like a gene ID but we can't map it, try some variations
+    if gene_input.isdigit():
+        # Try with HGNC: prefix
+        hgnc_id = f"HGNC:{gene_input}"
+        if hgnc_id in gene_mapping:
+            mapped_name = gene_mapping[hgnc_id]
+            logger.debug(f"Mapped numeric ID {gene_input} -> {mapped_name} via {hgnc_id}")
+            return mapped_name
+    
+    # If nothing worked, return the original value (could be a gene name not in our mapping)
+    logger.debug(f"Could not map gene identifier: {gene_input}, returning as-is")
+    return gene_input
 
 def is_gene_name_or_id(value):
     """Determine if a value is a gene name or gene ID"""
@@ -323,7 +342,7 @@ def apply_filters(df, search_term=None, genotype_filter=None, chromosome_filter=
                                  active_filters, selected_samples)
 
 def create_gene_link(gene_id_or_name):
-    """Create clickable gene name(s) with OMIM links - handles multiple genes with deduplication - LARGER FONTS"""
+    """Create clickable gene name(s) with OMIM links - IMPROVED with gene name conversion - LARGER FONTS"""
     
     if pd.isna(gene_id_or_name) or gene_id_or_name in [None, '', 'UNKNOWN']:
         return html.Span("UNKNOWN", style={"color": "#6c757d", "fontStyle": "italic", "fontSize": "14px"})
@@ -353,6 +372,7 @@ def create_gene_link(gene_id_or_name):
     gene_links = []
     
     for i, gene in enumerate(unique_genes):
+        # IMPROVED: Convert ID to name first
         gene_name = get_gene_name_from_id(gene)
         
         if gene_name == 'UNKNOWN' or not gene_name:
@@ -366,11 +386,11 @@ def create_gene_link(gene_id_or_name):
                 }
             )
         else:
-            # Create OMIM search URL
+            # Create OMIM search URL using the gene name
             omim_url = f"https://www.omim.org/search?index=entry&start=1&limit=10&search={gene_name}"
             
             gene_element = html.A(
-                gene_name,
+                gene_name,  # Always display the gene name, not the ID
                 href=omim_url,
                 target="_blank",
                 style={
