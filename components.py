@@ -124,6 +124,41 @@ def create_all_genes_display(gene_id_or_name):
         }
     )
 
+
+def get_moi_badge(moi):
+    """Return styled badge for Mode of Inheritance (MoI) - LARGER FONTS"""
+    if not moi or pd.isna(moi) or moi in ['UNK', 'Unknown', '']:
+        return dbc.Badge("UNK", color="secondary", 
+                        style={"fontSize": "0.8em", "padding": "0.4em 0.6em"},
+                        title="Mode of Inheritance Unknown")
+    
+    from config import MOI_COLORS
+    color = MOI_COLORS.get(str(moi).upper(), 'secondary')
+    
+    # Tooltips explicatifs
+    moi_tooltips = {
+        'AD': 'Autosomal Dominant',
+        'AR': 'Autosomal Recessive', 
+        'XL': 'X-linked',
+        'XLD': 'X-linked Dominant',
+        'XLR': 'X-linked Recessive',
+        'MT': 'Mitochondrial',
+        'YL': 'Y-linked',
+        'DD': 'Digenic',
+        'OLI': 'Oligogenic',
+        'SMU': 'Somatic Mutation',
+        'UNK': 'Unknown'
+    }
+    
+    tooltip = moi_tooltips.get(str(moi).upper(), f'Mode of Inheritance: {moi}')
+    
+    return dbc.Badge(
+        str(moi).upper(), 
+        color=color, 
+        style={"fontSize": "0.8em", "padding": "0.4em 0.6em"},
+        title=tooltip
+    )
+
 def create_aa_change_display(aa_change_str, variant_key, sample_id):
     """Create interactive display for AA changes with multiple transcripts and gene name mapping"""
     if not aa_change_str or aa_change_str in ['N/A', 'p.?', '.']:
@@ -294,6 +329,10 @@ def create_beautiful_variant_display(df):
             html.Td([get_genotype_badge_optimized(variant.get('GT', './.'))], style={
                 "height": "48px", "verticalAlign": "middle", "padding": "8px 15px"
             }),
+            # NOUVEAU : MoI - FIXED HEIGHT
+            html.Td([get_moi_badge(variant.get('moi', 'UNK'))], style={
+                "height": "48px", "verticalAlign": "middle", "padding": "8px 15px"
+            }),
             # VAF - FIXED HEIGHT
             html.Td(data['vaf_display'], style={
                 "fontFamily": "monospace", "fontSize": "13px", "textAlign": "right", 
@@ -370,6 +409,7 @@ def create_beautiful_variant_display(df):
                     html.Th("Gene", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
                     html.Th("Variant", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
                     html.Th("Genotype", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+					html.Th("MoI", className="sortable-header", title="Mode of Inheritance", style={"fontSize": "15px", "fontWeight": "700"}),  # NOUVEAU
                     html.Th("VAF", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
                     html.Th("Consequence", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
                     html.Th("ClinVar", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
@@ -465,7 +505,7 @@ def create_variant_details_accordion(variant):
                 ], className="detail-section uniform-height")
             ], width=4),
             
-            # Column 3: Clinical Information - MODIFIED TO SHOW ALL GENES
+            # Column 3: Clinical Information - MODIFIED TO SHOW ALL GENES AND MoI
             dbc.Col([
                 html.Div([
                     html.H6([
@@ -479,18 +519,23 @@ def create_variant_details_accordion(variant):
                             get_clinvar_badge(variant.get('clinvar_sig'))
                         ], className="mb-2"),
                         
-                        # MODIFIED: Show all genes instead of just one
+                        # Genes (existant)
                         html.Div([
                             html.Strong("Gene(s): ", style={"marginRight": "8px"}),
                             create_all_genes_display(variant.get('gene', 'UNKNOWN'))
                         ], className="mb-2", style={"display": "flex", "alignItems": "flex-start", "flexWrap": "wrap"}),
 
+                        # NOUVEAU : Mode d'héritage
+                        html.Div([
+                            html.Strong("Mode of Inheritance: "),
+                            get_moi_badge(variant.get('moi', 'UNK'))
+                        ], className="mb-2"),
+
                     ])
                 ], className="detail-section uniform-height")
             ], width=4)
-        ]),
+        ]),  # CORRECTION: Fermeture du premier dbc.Row
         
-        # Rest of the accordion remains the same...
         # Bioinformatics Scores Section
         dbc.Row([
             # Column 1: Pathogenicity Prediction
@@ -669,7 +714,7 @@ def create_variant_details_accordion(variant):
                     ])
                 ], className="detail-section uniform-height")
             ], width=4)
-        ]),
+        ]),  # CORRECTION: Fermeture du deuxième dbc.Row
             
         # Comments Section
         dbc.Row([
@@ -685,10 +730,8 @@ def create_variant_details_accordion(variant):
                     ], className="comments-section")
                 ], className="detail-section")
             ], width=12)
-        ])
+        ])  # CORRECTION: Fermeture du troisième dbc.Row
     ], style={"padding": "20px", "backgroundColor": "rgba(240, 248, 255, 0.8)", "borderRadius": "0 0 12px 12px"})
-
-# Rest of functions remain the same...
 
 def create_database_status_display():
 	"""Create database status display with optimized queries"""

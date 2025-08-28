@@ -318,7 +318,7 @@ def apply_filters_optimized(df, search_term=None, genotype_filter=None, chromoso
     # OPTIMIZED Preset filters - Use vectorized operations
     if active_filters:
         if active_filters.get('high_impact'):
-            high_impact = ['frameshift_variant', 'stop_gained', 'stopgain', 'stop_lost']
+            high_impact = ['frameshift_variant', 'stop_gained', 'stopgain', 'stop_lost', 'splicing']
             df = df.filter(pl.col('consequence').is_in(high_impact))
             logger.info(f"After high_impact filter: {len(df)} variants")
         
@@ -333,6 +333,19 @@ def apply_filters_optimized(df, search_term=None, genotype_filter=None, chromoso
         if active_filters.get('homozygous'):
             df = df.filter(pl.col('GT').is_in(['1/1', '1|1', '0/0', '0|0']))
             logger.info(f"After homozygous filter: {len(df)} variants")
+        
+        # NOUVEAUX : Filtres MoI
+        if active_filters.get('moi_ad'):
+            df = df.filter(pl.col('moi').str.to_uppercase() == 'AD')
+            logger.info(f"After MoI AD filter: {len(df)} variants")
+        
+        if active_filters.get('moi_ar'):
+            df = df.filter(pl.col('moi').str.to_uppercase() == 'AR')
+            logger.info(f"After MoI AR filter: {len(df)} variants")
+        
+        if active_filters.get('moi_xl'):
+            df = df.filter(pl.col('moi').str.to_uppercase().str.contains('XL'))
+            logger.info(f"After MoI X-linked filter: {len(df)} variants")
     
     logger.info(f"OPTIMIZED filtering complete: {len(df)} variants")
     return df
@@ -687,6 +700,7 @@ def get_severity_score(consequence):
         'transcript_ablation': 10,
         'splice_acceptor_variant': 9,
         'splice_donor_variant': 9,
+        'splicing': 9,  # NOUVEAU : Score élevé pour les variants de splicing
         'stop_gained': 9,
         'stopgain': 9,
         'frameshift_variant': 9,

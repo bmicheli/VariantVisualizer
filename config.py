@@ -57,6 +57,7 @@ CONSEQUENCE_COLORS = {
     'start_lost': 'danger',
     'splice_acceptor_variant': 'danger',
     'splice_donor_variant': 'danger',
+    'splicing': 'danger',  # NOUVEAU : Ajout des variants de splicing
     'missense_variant': 'warning',
     'nonsynonymous_SNV': 'warning',
     'synonymous_variant': 'success',
@@ -66,7 +67,20 @@ CONSEQUENCE_COLORS = {
     'frameshift_insertion': 'danger',
     'variant': 'secondary'
 }
-
+# Color mappings for modes of inheritance
+MOI_COLORS = {
+    'AD': 'primary',      # Autosomal Dominant - Bleu
+    'AR': 'warning',      # Autosomal Recessive - Orange
+    'XL': 'info',         # X-linked - Cyan
+    'XLD': 'info',        # X-linked Dominant - Cyan
+    'XLR': 'info',        # X-linked Recessive - Cyan
+    'MT': 'secondary',    # Mitochondrial - Gris
+    'YL': 'dark',         # Y-linked - Noir
+    'DD': 'success',      # Digenic - Vert
+    'OLI': 'light',       # Oligogenic - Gris clair
+    'SMU': 'danger',      # Somatic mutation - Rouge
+    'UNK': 'secondary'    # Unknown - Gris
+}
 # Color mappings for ClinVar classifications
 CLINVAR_COLORS = {
     'Pathogenic': 'danger',
@@ -99,6 +113,9 @@ PRESET_FILTERS = [
     {"name": "Pathogenic/Likely pathogenic", "id": "pathogenic", "icon": "🔴"},
     {"name": "Heterozygous", "id": "heterozygous", "icon": "🧬"},
     {"name": "Homozygous", "id": "homozygous", "icon": "🧬"},
+    {"name": "Autosomal Dominant (AD)", "id": "moi_ad", "icon": "🧬"},      # NOUVEAU
+    {"name": "Autosomal Recessive (AR)", "id": "moi_ar", "icon": "🧬"},     # NOUVEAU
+    {"name": "X-linked", "id": "moi_xl", "icon": "🧬"},                     # NOUVEAU
 ]
 
 # =============================================================================

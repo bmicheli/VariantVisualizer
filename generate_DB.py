@@ -133,6 +133,19 @@ class VCFToParquetConverter:
 
 		logger.info(f"Found {len(samples)} samples in VCF file")
 		return samples, {"info": info_fields, "format": format_fields}
+	def _parse_gene_detail(self, gene_detail: str) -> str:
+		"""Parse gene detail information for splicing variants"""
+		if not gene_detail or gene_detail == ".":
+			return "c.?"
+		
+		# Format attendu : NM_001166175:exon2:c.335-4->T
+		# On garde tout après le premier ':'
+		parts = gene_detail.split(":", 1)
+		if len(parts) > 1:
+			detail = parts[1]  # exon2:c.335-4->T
+			return detail
+		
+		return gene_detail
 
 	def extract_info_annotations(self, info_str: str) -> Dict[str, Any]:
 		"""Extract and parse annotations from INFO field"""
@@ -161,17 +174,27 @@ class VCFToParquetConverter:
 		gnomad_afs = [gnomad_af_afr, gnomad_af_amr, gnomad_af_eas, gnomad_af_nfe, gnomad_af_sas,gnomad_af_asj,gnomad_af_fin]
 		max_gnomad_af = max([af for af in gnomad_afs if af > 0], default=0.0)
 
+		# NOUVEAU : Gestion des variants de splicing
+		func_hgnc = annotations.get("Func.HGNC", "")
+		
+		if func_hgnc == "splicing":
+			# Pour les variants de splicing
+			consequence = "splicing"
+			aa_change = self._parse_gene_detail(annotations.get("GeneDetail.HGNC", ""))
+		else:
+			# Pour les autres variants (logique existante)
+			consequence = self._parse_consequence(annotations.get("ExonicFunc.HGNC", "variant"))
+			aa_change = self._parse_aa_change(annotations.get("AAChange.HGNC", ""))
+
 		result = {
 			"af": self._safe_float(annotations.get("AF", "0")),
 			"ac": self._safe_int(annotations.get("AC", "0")),
 			"an": self._safe_int(annotations.get("AN", "0")),
 			"qual": self._safe_float(annotations.get("AQ", "0")),
 			"gene": annotations.get("Gene.HGNC", "UNKNOWN"),
-			"consequence": self._parse_consequence(
-				annotations.get("ExonicFunc.HGNC", "variant")
-			),
-			"aa_change": self._parse_aa_change(annotations.get("AAChange.HGNC", "")),
-			
+			"consequence": consequence,  # Utilise la nouvelle logique
+			"aa_change": aa_change,      # Utilise la nouvelle logique
+			"moi": self._parse_moi(annotations.get("MoI", "")),  # NOUVEAU : Mode d'héritage
 			# Original gnomAD fields
 			"gnomad_af": self._safe_float(annotations.get("AF_gnomad", "0")),
 			
@@ -262,6 +285,37 @@ class VCFToParquetConverter:
 		}
 		return consequence_map.get(consequence, consequence)
 
+	def _parse_moi(self, moi_str: str) -> str:
+		"""Parse Mode of Inheritance annotation"""
+		if not moi_str or moi_str == "." or moi_str == "":
+			return "UNK"
+		
+		# Normaliser les valeurs communes
+		moi_upper = moi_str.upper().strip()
+		
+		# Mapping des variantes communes
+		moi_mapping = {
+			"AUTOSOMAL_DOMINANT": "AD",
+			"AUTOSOMAL_RECESSIVE": "AR", 
+			"X_LINKED": "XL",
+			"X_LINKED_DOMINANT": "XLD",
+			"X_LINKED_RECESSIVE": "XLR",
+			"X-LINKED": "XL",
+			"X-LINKED_DOMINANT": "XLD", 
+			"X-LINKED_RECESSIVE": "XLR",
+			"MITOCHONDRIAL": "MT",
+			"Y_LINKED": "YL",
+			"Y-LINKED": "YL",
+			"DIGENIC": "DD",
+			"OLIGOGENIC": "OLI",
+			"SOMATIC": "SMU",
+			"UNKNOWN": "UNK"
+		}
+		
+		# Retourner la valeur mappée ou la valeur originale
+		return moi_mapping.get(moi_upper, moi_upper if len(moi_upper) <= 5 else "UNK")
+
+
 	def _parse_aa_change(self, aa_change: str) -> str:
 		if not aa_change or aa_change == ".":
 			return "p.?"
@@ -349,6 +403,7 @@ class VCFToParquetConverter:
 			"gene": pl.Utf8,
 			"consequence": pl.Utf8,
 			"aa_change": pl.Utf8,
+			"moi": pl.Utf8,
 			"clinvar_sig": pl.Utf8,
 			"clinvar_id": pl.Utf8,
 			"clinvar_disease": pl.Utf8,
@@ -421,6 +476,7 @@ class VCFToParquetConverter:
 						"FILTER": str(filter_val),
 						"SAMPLE": str(sample),
 						"GT": str(sample_info["genotype"]),
+						"moi": str(annotations.get("moi", "UNK")),  # NOUVEAU
 						"DP": int(sample_info["depth"]),
 						"VAF": float(sample_info["vaf"]),
 						"GQ": float(sample_info["quality"]),

@@ -710,6 +710,10 @@ app.clientside_callback(
                     if (active_filters.pathogenic && buttonText.includes('pathogenic')) isActive = true;
                     if (active_filters.heterozygous && buttonText.includes('heterozygous')) isActive = true;
                     if (active_filters.homozygous && buttonText.includes('homozygous')) isActive = true;
+                    // NOUVEAUX : Filtres MoI
+                    if (active_filters.moi_ad && buttonText.includes('autosomal dominant')) isActive = true;
+                    if (active_filters.moi_ar && buttonText.includes('autosomal recessive')) isActive = true;
+                    if (active_filters.moi_xl && buttonText.includes('x-linked')) isActive = true;
                 }
                 
                 if (isActive) {
