@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 class VCFToParquetConverter:
-	def __init__(self, output_dir: str = "data", chunk_size: int = 10000):
+	def __init__(self, output_dir: str = "data", chunk_size: int = 50000):
 		self.output_dir = Path(output_dir)
 		self.chunk_size = chunk_size
 		self.output_dir.mkdir(exist_ok=True)
@@ -540,6 +540,7 @@ class VCFToParquetConverter:
 			"AD": pl.Utf8,
 			"variant_key": pl.Utf8,
 			"gene": pl.Utf8,
+			"moi": pl.Utf8,
 			"consequence": pl.Utf8,
 			"aa_change": pl.Utf8,
 			"clinvar_sig": pl.Utf8,
@@ -690,7 +691,7 @@ def main():
 	parser.add_argument("vcf_file", help="Input VCF file path")
 	parser.add_argument("-o", "--output-dir", default="data", help="Output directory")
 	parser.add_argument("-n", "--name", default="variants", help="Output file name prefix")
-	parser.add_argument("-c", "--chunk-size", type=int, default=10000, help="Chunk size for processing")
+	parser.add_argument("-c", "--chunk-size", type=int, default=50000, help="Chunk size for processing")
 	parser.add_argument("--create-index", action="store_true", help="Create sample index")
 	parser.add_argument("--skip-deps-check", action="store_true", help="Skip dependency check")
 	

@@ -39,7 +39,7 @@ MAX_DISPLAY_VARIANTS = 20
 MAX_LOAD_LIMIT = 50000
 
 # Default chunk size for processing
-DEFAULT_CHUNK_SIZE = 10000
+DEFAULT_CHUNK_SIZE = 50000
 
 # Cache settings - AMÉLIORÉ
 CACHE_TIMEOUT = 600      # Augmenté à 10 minutes
