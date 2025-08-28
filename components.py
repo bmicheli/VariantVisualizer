@@ -1,5 +1,9 @@
 """
-UI Components for Variant Visualizer
+UI Components for Variant Visualizer - MODIFIED VERSION
+Modifications:
+1. Hauteur fixe des lignes du tableau (48px)
+2. Affichage compact des gènes dans le tableau (premier + nombre)
+3. Affichage complet des gènes dans l'accordéon Clinical Information
 """
 
 import dash_bootstrap_components as dbc
@@ -30,6 +34,94 @@ def create_gnomad_link(chrom, pos, ref, alt):
         target="_blank",
         className="btn btn-outline-primary btn-sm",
         style={"fontSize": "12px"}
+    )
+
+def create_all_genes_display(gene_id_or_name):
+    """Create display for all genes in Clinical Information section"""
+    
+    if pd.isna(gene_id_or_name) or gene_id_or_name in [None, '', 'UNKNOWN']:
+        return html.Span("UNKNOWN", style={"color": "#6c757d", "fontStyle": "italic", "fontSize": "14px"})
+    
+    gene_input = str(gene_id_or_name)
+    
+    # Handle multiple genes separated by common delimiters
+    gene_separators = [' • ', ' · ', ',', ';', '|', '/', '&']
+    genes = [gene_input]
+    
+    # Split by each separator
+    for sep in gene_separators:
+        if sep in gene_input:
+            genes = [g.strip() for part in genes for g in part.split(sep) if g.strip()]
+            break
+    
+    # DEDUPLICATION: Remove duplicates while preserving order
+    unique_genes = []
+    seen = set()
+    for gene in genes:
+        gene = gene.strip()
+        if gene and gene not in seen:
+            unique_genes.append(gene)
+            seen.add(gene)
+    
+    # Convert each gene ID to gene name and create links
+    gene_links = []
+    
+    for i, gene in enumerate(unique_genes):
+        # Convert ID to name first
+        gene_name = get_gene_name_from_id(gene)
+        
+        if gene_name == 'UNKNOWN' or not gene_name:
+            # If we can't map it, show the original value
+            gene_element = html.Span(
+                gene, 
+                style={
+                    "color": "#6c757d", 
+                    "fontStyle": "italic",
+                    "fontSize": "14px",
+                    "marginRight": "8px"
+                }
+            )
+        else:
+            # Create OMIM search URL using the gene name
+            omim_url = f"https://www.omim.org/search?index=entry&start=1&limit=10&search={gene_name}"
+            
+            gene_element = html.A(
+                gene_name,  # Always display the gene name, not the ID
+                href=omim_url,
+                target="_blank",
+                style={
+                    "fontWeight": "bold", 
+                    "color": "#0097A7", 
+                    "textDecoration": "none",
+                    "fontSize": "14px",
+                    "marginRight": "8px"
+                },
+                title=f"View {gene_name} in OMIM database",
+                className="gene-link"
+            )
+        
+        gene_links.append(gene_element)
+        
+        # Add separator between genes (but not after the last one)
+        if i < len(unique_genes) - 1:
+            gene_links.append(
+                html.Span(" • ", style={
+                    "color": "#6c757d", 
+                    "fontSize": "14px",
+                    "margin": "0 4px"
+                })
+            )
+    
+    # Return container with all genes
+    return html.Div(
+        gene_links,
+        style={
+            "display": "flex",
+            "flexWrap": "wrap",
+            "alignItems": "center",
+            "gap": "2px",
+            "lineHeight": "1.5"
+        }
     )
 
 def create_aa_change_display(aa_change_str, variant_key, sample_id):
@@ -99,6 +191,504 @@ def create_aa_change_display(aa_change_str, variant_key, sample_id):
         is_open=False)
     ])
 
+def create_beautiful_variant_display(df):
+    """Create optimized variant table display with FIXED ROW HEIGHT"""
+    # Check DataFrame length properly for both Polars and Pandas
+    if isinstance(df, pl.DataFrame):
+        is_empty = len(df) == 0
+        total_count = len(df)
+    else:
+        is_empty = df.empty
+        total_count = len(df)
+    
+    if is_empty:
+        return html.Div([
+            dbc.Alert([
+                html.Div([
+                    html.I(className="fas fa-info-circle fa-3x text-info mb-3"),
+                    html.H4("No Variants Found", className="text-info mb-3"),
+                    html.P([
+                        "No variants match your current selection or the database is empty. ",
+                        html.Br(),
+                        "Please check your filters or ensure your Parquet file contains data."
+                    ], className="mb-0 text-muted")
+                ], className="text-center")
+            ], color="info", className="border-0", style={
+                "background": "rgba(13, 202, 240, 0.1)",
+                "borderRadius": "15px",
+                "padding": "40px"
+            })
+        ])
+    
+    # Convert to pandas for display if it's Polars
+    if isinstance(df, pl.DataFrame):
+        df_pandas = df.to_pandas()
+    else:
+        df_pandas = df
+    
+    # OPTIMISATION MAJEURE: Limiter strictement à MAX_DISPLAY_VARIANTS
+    display_df = df_pandas.head(MAX_DISPLAY_VARIANTS)
+    showing_count = len(display_df)
+    
+    # Pre-calculate all data to avoid repeated calculations
+    variant_data = []
+    for idx, variant in display_df.iterrows():
+        variant_key = variant.get('variant_key', f"{variant['CHROM']}:{variant['POS']}:{variant['REF']}:{variant['ALT']}")
+        
+        # Pre-format all data
+        position = f"{variant['CHROM']}:{variant['POS']:}"
+        variant_text = f"{variant['REF']}>{variant['ALT']}"
+        vaf_display = format_percentage(variant.get('VAF', 0))
+        
+        # Use max_gnomad_af for display
+        max_gnomad_af = variant.get('max_gnomad_af', variant.get('gnomad_af', 0))
+        max_gnomad_af_display = format_frequency(max_gnomad_af)
+        
+        variant_data.append({
+            'variant_key': variant_key,
+            'position': position,
+            'variant_text': variant_text,
+            'vaf_display': vaf_display,
+            'max_gnomad_af_display': max_gnomad_af_display,
+            'max_gnomad_af': max_gnomad_af,
+            'variant': variant
+        })
+    
+    # Create table rows with FIXED HEIGHT - MODIFIED VERSION
+    table_rows = []
+    
+    for data in variant_data:
+        variant = data['variant']
+        variant_key = data['variant_key']
+        
+        # Create data row with FIXED HEIGHT - 48px
+        data_row = html.Tr([
+            # Sample ID - FIXED HEIGHT
+            html.Td(variant['SAMPLE'], style={
+                "fontSize": "14px", "fontWeight": "600", "height": "48px", 
+                "verticalAlign": "middle", "padding": "8px 15px"
+            }),
+            # Position - FIXED HEIGHT
+            html.Td(data['position'], style={
+                "fontFamily": "monospace", "fontSize": "14px", "fontWeight": "500",
+                "height": "48px", "verticalAlign": "middle", "padding": "8px 15px"
+            }),
+            # Gene - FIXED HEIGHT AND SINGLE LINE (COMPACT VERSION)
+            html.Td(
+                html.Div(create_gene_link(variant.get('gene', 'UNKNOWN')), style={
+                    "whiteSpace": "nowrap", "overflow": "hidden", "textOverflow": "ellipsis",
+                    "maxWidth": "120px"
+                }), 
+                style={
+                    "fontSize": "14px", "height": "48px", "verticalAlign": "middle", 
+                    "padding": "8px 15px"
+                }
+            ),
+            # Variant - FIXED HEIGHT
+            html.Td(data['variant_text'], style={
+                "fontFamily": "monospace", "fontSize": "14px", "backgroundColor": "#f8f9fa", 
+                "borderRadius": "4px", "textAlign": "center", "fontWeight": "500",
+                "height": "48px", "verticalAlign": "middle", "padding": "8px 15px"
+            }),
+            # Genotype - FIXED HEIGHT
+            html.Td([get_genotype_badge_optimized(variant.get('GT', './.'))], style={
+                "height": "48px", "verticalAlign": "middle", "padding": "8px 15px"
+            }),
+            # VAF - FIXED HEIGHT
+            html.Td(data['vaf_display'], style={
+                "fontFamily": "monospace", "fontSize": "13px", "textAlign": "right", 
+                "fontWeight": "500", "height": "48px", "verticalAlign": "middle", "padding": "8px 15px"
+            }),
+            # Consequence - FIXED HEIGHT
+            html.Td([get_consequence_badge_optimized(variant.get('consequence', 'variant'))], style={
+                "height": "48px", "verticalAlign": "middle", "padding": "8px 15px"
+            }),
+            # ClinVar Classification - FIXED HEIGHT
+            html.Td([get_clinvar_badge_optimized(variant.get('clinvar_sig'))], style={
+                "height": "48px", "verticalAlign": "middle", "padding": "8px 15px"
+            }),
+            # Population Frequency (gnomAD max) - FIXED HEIGHT
+            html.Td([
+                html.Span(data['max_gnomad_af_display'], 
+                    style={
+                        "fontFamily": "monospace", 
+                        "fontSize": "13px", 
+                        "fontWeight": "bold",
+                        "color": "#dc3545" if data['max_gnomad_af'] and data['max_gnomad_af'] < 0.001 
+                            else "#ffc107" if data['max_gnomad_af'] and 0.001 <= data['max_gnomad_af'] < 0.01 
+                            else "#28a745" if data['max_gnomad_af'] and data['max_gnomad_af'] >= 0.01 
+                            else "#6c757d"
+                    },
+                    title=f"Max gnomAD Population Allele Frequency: {data['max_gnomad_af_display']}"
+                )
+            ], style={
+                "textAlign": "right", "height": "48px", "verticalAlign": "middle", "padding": "8px 15px"
+            }),
+            # Comments - FIXED HEIGHT
+            html.Td([
+                dbc.Button([html.I(className="fas fa-comments me-1"), str(variant.get('comment_count', 0))], 
+                        id={"type": "comment-btn", "variant": variant_key, "sample": variant['SAMPLE']},
+                        color="outline-primary", size="sm", n_clicks=0, 
+                        style={"fontSize": "12px"})
+            ], style={
+                "textAlign": "center", "height": "48px", "verticalAlign": "middle", "padding": "8px 15px"
+            }),
+        ], className="variant-row", id={"type": "variant-row", "variant": variant_key, "sample": variant['SAMPLE']}, n_clicks=0)
+        
+        # Accordion collapse row - LAZY LOADING
+        accordion_row = html.Tr([
+            html.Td([
+                dbc.Collapse([
+                    html.Div(id={"type": "variant-details-lazy", "variant": variant_key, "sample": variant['SAMPLE']})
+                ], 
+                id={"type": "variant-collapse", "variant": variant_key, "sample": variant['SAMPLE']},
+                is_open=False)
+            ], colSpan=10, style={"padding": "0", "border": "none"})
+        ], style={"border": "none"})
+        
+        table_rows.extend([data_row, accordion_row])
+    
+    # Performance notice
+    performance_notice = []
+    if total_count > MAX_DISPLAY_VARIANTS:
+        performance_notice = [
+            dbc.Alert([
+                html.I(className="fa fa-exclamation-triangle"),
+                f" Performance mode: Showing first {showing_count} of {total_count:,} variants. ",
+                
+            ], color="warning", className="mb-3", style={"fontSize": "0.9em"})
+        ]
+    
+    # Create table with minimal overhead - LARGER HEADERS
+    return html.Div([
+        *performance_notice,
+        html.Table([
+            html.Thead([
+                html.Tr([
+                    html.Th("Sample", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+                    html.Th("Position", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+                    html.Th("Gene", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+                    html.Th("Variant", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+                    html.Th("Genotype", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+                    html.Th("VAF", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+                    html.Th("Consequence", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+                    html.Th("ClinVar", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+                    html.Th("AF (gnomAD)", className="sortable-header", title="Max Population Allele Frequency from gnomAD", style={"fontSize": "15px", "fontWeight": "700"}),
+                    html.Th("Comments", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
+                ])
+            ]),
+            html.Tbody(table_rows)
+        ], className="variants-table")
+    ], className="variants-table-container")
+
+def create_variant_details_accordion(variant):
+    """Create detailed information panel for accordion expansion with ALL GENES in Clinical Information"""
+    
+    variant_key = variant.get('variant_key', f"{variant['CHROM']}:{variant['POS']}:{variant['REF']}:{variant['ALT']}")
+    sample_id = variant['SAMPLE']
+    
+    # Get comments for this variant and sample
+    try:
+        comments_df = get_variant_comments(variant_key, sample_id)
+    except Exception as e:
+        logger.error(f"Error retrieving comments: {e}")
+        comments_df = pd.DataFrame()
+    
+    return html.Div([
+        dbc.Row([
+            # Column 1: Variant Information
+            dbc.Col([
+                html.Div([
+                    html.H6([
+                        html.I(className="fas fa-dna me-2"),
+                        "Variant Details"
+                    ], className="text-primary mb-3"),
+                    
+                    html.Div([
+                        html.Div([
+                            html.Strong("Position: "),
+                            html.Span(f"{variant['CHROM']}:{variant['POS']:}", style={"fontSize": "14px"})
+                        ], className="mb-2"),
+
+                        html.Div([
+                            html.Strong("Consequence: "),
+                            get_consequence_badge(variant.get('consequence', 'variant'))
+                        ], className="mb-2"),
+
+                        html.Div([
+                            html.Strong("Genotype: "),
+                            get_genotype_badge(variant.get('GT', './.'))
+                        ], className="mb-2"),
+
+                        html.Div([
+                            html.Strong("AA Change: "),
+                            create_aa_change_display(
+                                variant.get('aa_change', 'N/A'), 
+                                variant_key, 
+                                sample_id
+                            )
+                        ], className="mb-2"),
+
+                    ])
+                ], className="detail-section uniform-height")
+            ], width=4),
+            
+            # Column 2: Technical Information
+            dbc.Col([
+                html.Div([
+                    html.H6([
+                        html.I(className="fas fa-microscope me-2"),
+                        "Technical Details"
+                    ], className="text-primary mb-3"),
+                    
+                    html.Div([
+                        html.Div([
+                            html.Strong("VAF: "),
+                            html.Span(format_percentage(variant.get('VAF', 0)), style={"fontSize": "14px"})
+                        ], className="mb-2"),
+                        
+                        html.Div([
+                            html.Strong("Depth: "),
+                            html.Span(f"{variant.get('DP', 0)}" if pd.notna(variant.get('DP')) else "N/A", style={"fontSize": "14px"})
+                        ], className="mb-2"),
+                        
+                        html.Div([
+                            html.Strong("Allelic Depth: "),
+                            html.Span(variant.get('AD', 'N/A'), style={"fontSize": "14px"})
+                        ], className="mb-2"),
+
+                        html.Div([
+                            html.Strong("Quality: "),
+                            html.Span(f"{variant.get('QUAL', 0):.1f}" if pd.notna(variant.get('QUAL')) else "N/A", style={"fontSize": "14px"})
+                        ], className="mb-2"),
+                    ])
+                ], className="detail-section uniform-height")
+            ], width=4),
+            
+            # Column 3: Clinical Information - MODIFIED TO SHOW ALL GENES
+            dbc.Col([
+                html.Div([
+                    html.H6([
+                        html.I(className="fas fa-stethoscope me-2"),
+                        "Clinical Information"
+                    ], className="text-primary mb-3"),
+                    
+                    html.Div([
+                        html.Div([
+                            html.Strong("ClinVar Significance: "),
+                            get_clinvar_badge(variant.get('clinvar_sig'))
+                        ], className="mb-2"),
+                        
+                        # MODIFIED: Show all genes instead of just one
+                        html.Div([
+                            html.Strong("Gene(s): ", style={"marginRight": "8px"}),
+                            create_all_genes_display(variant.get('gene', 'UNKNOWN'))
+                        ], className="mb-2", style={"display": "flex", "alignItems": "flex-start", "flexWrap": "wrap"}),
+
+                    ])
+                ], className="detail-section uniform-height")
+            ], width=4)
+        ]),
+        
+        # Rest of the accordion remains the same...
+        # Bioinformatics Scores Section
+        dbc.Row([
+            # Column 1: Pathogenicity Prediction
+            dbc.Col([
+                html.Div([
+                    html.H6([
+                        html.I(className="fas fa-calculator me-2"),
+                        "Pathogenicity Prediction"
+                    ], className="text-primary mb-3"),
+                    
+                    html.Div([
+                        html.Div([
+                            html.Strong("CADD Score: "),
+                            html.Span(
+                                format_score(variant.get('cadd_score', 0)) if variant.get('cadd_score') else "N/A",
+                                className="fw-bold",
+                                style={"color": "#28a745" if variant.get('cadd_score', 0) and variant.get('cadd_score', 0) < 15 
+                                    else "#ffc107" if variant.get('cadd_score', 0) and 15 <= variant.get('cadd_score', 0) < 25 
+                                    else "#dc3545" if variant.get('cadd_score', 0) and variant.get('cadd_score', 0) >= 25 
+                                    else "#6c757d", "fontSize": "14px"}
+                            ),
+                            html.Br(),
+                            html.Small(" (>15 deleterious)", className="text-muted")
+                        ], className="mb-2"),
+                        
+                        html.Div([
+                            html.Strong("SIFT Score: "),
+                            html.Span(
+                                format_score(variant.get('sift_score', 0)) if variant.get('sift_score') else "N/A",
+                                className="fw-bold",
+                                style={"color": "#dc3545" if variant.get('sift_score', 0) and variant.get('sift_score', 0) < 0.05 
+                                    else "#28a745" if variant.get('sift_score', 0) and variant.get('sift_score', 0) >= 0.05 
+                                    else "#6c757d", "fontSize": "14px"}
+                            ),
+                            html.Br(),
+                            html.Small(" (<0.05 deleterious)", className="text-muted")
+                        ], className="mb-2"),
+                        
+                        html.Div([
+                            html.Strong("PolyPhen Score: "),
+                            html.Span(
+                                format_score(variant.get('polyphen_score', 0)) if variant.get('polyphen_score') else "N/A",
+                                className="fw-bold",
+                                style={"color": "#28a745" if variant.get('polyphen_score', 0) and variant.get('polyphen_score', 0) < 0.15 
+                                    else "#ffc107" if variant.get('polyphen_score', 0) and 0.15 <= variant.get('polyphen_score', 0) < 0.85 
+                                    else "#dc3545" if variant.get('polyphen_score', 0) and variant.get('polyphen_score', 0) >= 0.85 
+                                    else "#6c757d", "fontSize": "14px"}
+                            ),
+                            html.Br(),
+                            html.Small(" (>0.85 damaging)", className="text-muted")
+                        ], className="mb-2")
+                    ])
+                ], className="detail-section uniform-height")
+            ], width=4),
+            
+            # Column 2: Splicing & Conservation Scores
+            dbc.Col([
+                html.Div([
+                    html.H6([
+                        html.I(className="fas fa-dna me-2"),
+                        "Splicing & Conservation"
+                    ], className="text-primary mb-3"),
+                    
+                    html.Div([
+                        html.Div([
+                            html.Strong("REVEL Score: "),
+                            html.Span(
+                                format_score(variant.get('revel_score', 0)) if variant.get('revel_score') else "N/A",
+                                className="fw-bold",
+                                style={"color": "#28a745" if variant.get('revel_score', 0) and variant.get('revel_score', 0) < 0.3 
+                                    else "#ffc107" if variant.get('revel_score', 0) and 0.3 <= variant.get('revel_score', 0) < 0.7 
+                                    else "#dc3545" if variant.get('revel_score', 0) and variant.get('revel_score', 0) >= 0.7 
+                                    else "#6c757d", "fontSize": "14px"}
+                            ),
+                            html.Br(),
+                            html.Small(" (>0.7 pathogenic)", className="text-muted")
+                        ], className="mb-2"),
+                        
+                        html.Div([
+                            html.Strong("SpliceAI Score: "),
+                            html.Span(
+                                format_score(variant.get('splice_ai', 0)) if variant.get('splice_ai') else "N/A",
+                                className="fw-bold",
+                                style={"color": "#28a745" if variant.get('splice_ai', 0) and variant.get('splice_ai', 0) < 0.2 
+                                    else "#ffc107" if variant.get('splice_ai', 0) and 0.2 <= variant.get('splice_ai', 0) < 0.5 
+                                    else "#dc3545" if variant.get('splice_ai', 0) and variant.get('splice_ai', 0) >= 0.5 
+                                    else "#6c757d", "fontSize": "14px"}
+                            ),
+                            html.Br(),
+                            html.Small(" (>0.5 splice altering)", className="text-muted")
+                        ], className="mb-2"),
+                        
+                        html.Div([
+                            html.Strong("pLI Score: "),
+                            html.Span(
+                                format_score(variant.get('pli_score', 0)) if variant.get('pli_score') else "N/A",
+                                className="fw-bold",
+                                style={"color": "#28a745" if variant.get('pli_score', 0) and variant.get('pli_score', 0) < 0.1 
+                                    else "#ffc107" if variant.get('pli_score', 0) and 0.1 <= variant.get('pli_score', 0) < 0.9 
+                                    else "#dc3545" if variant.get('pli_score', 0) and variant.get('pli_score', 0) >= 0.9 
+                                    else "#6c757d", "fontSize": "14px"}
+                            ),
+                            html.Br(),
+                            html.Small(" (>0.9 intolerant)", className="text-muted")
+                        ], className="mb-2")
+                    ])
+                ], className="detail-section uniform-height")
+            ], width=4),
+            
+            # Column 3: Population & Additional Scores
+            dbc.Col([
+                html.Div([
+                    html.H6([
+                        html.I(className="fas fa-globe me-2"),
+                        "Population Data"
+                    ], className="text-primary mb-3"),
+                    
+                    html.Div([
+                        # Display max gnomAD AF
+                        html.Div([
+                            html.Strong("Allele Frequency gnomAD (max): "),
+                            html.Span(
+                                format_frequency(variant.get('max_gnomad_af', 0)) if variant.get('max_gnomad_af') else "N/A",
+                                className="fw-bold",
+                                style={"color": "#dc3545" if variant.get('max_gnomad_af', 0) and variant.get('max_gnomad_af', 0) < 0.001 
+                                    else "#ffc107" if variant.get('max_gnomad_af', 0) and 0.001 <= variant.get('max_gnomad_af', 0) < 0.01 
+                                    else "#28a745" if variant.get('max_gnomad_af', 0) and variant.get('max_gnomad_af', 0) >= 0.01 
+                                    else "#6c757d", "fontSize": "14px"}
+                            )
+                        ], className="mb-2"),
+                        
+                        # Allele Count gnomAD with homo/hemi counts on separate lines
+                        html.Div([
+                            html.Strong("Allele Count gnomAD: "),
+                            html.Span(
+                                f"{variant.get('ac_gnomad', 0)}" if pd.notna(variant.get('ac_gnomad')) else "N/A",
+                                style={"fontSize": "14px"}
+                            ),
+                            html.Br(),
+                            html.Span([
+                                html.Span("             • ", style={"fontSize": "14px"}),
+                                html.Strong("NB of homo : "),
+                                f"{variant.get('nhomalt_gnomad', 0):.0f}" if pd.notna(variant.get('nhomalt_gnomad')) else "N/A"
+                            ], style={"fontSize": "14px"}),
+                            html.Br(),
+                            html.Span([
+                                html.Span("             • ", style={"fontSize": "14px"}),
+                                html.Strong("NB of hemi : "),
+                                f"{variant.get('nhemalt_gnomad', 0):.0f}" if pd.notna(variant.get('nhemalt_gnomad')) else "N/A"
+                            ], style={"fontSize": "14px"})
+                        ], className="mb-2"),
+                        
+                        # AF_CGEN with calculation and color coding (only frequency colored)
+                        html.Div([
+                            html.Strong("Allele Frequency CGEN: "),
+                            html.Span([
+                                html.Span(
+                                    f"{format_frequency(variant.get('af_cgen', 0))}" if variant.get('af_cgen') else "N/A",
+                                    className="fw-bold",
+                                    style={"color": "#dc3545" if variant.get('af_cgen', 0) and variant.get('af_cgen', 0) < 0.001 
+                                        else "#ffc107" if variant.get('af_cgen', 0) and 0.001 <= variant.get('af_cgen', 0) < 0.01 
+                                        else "#28a745" if variant.get('af_cgen', 0) and variant.get('af_cgen', 0) >= 0.01 
+                                        else "#6c757d", "fontSize": "14px"}
+                                ),
+                                html.Span(
+                                    f" ({variant.get('ac_cgen', 0)}/{variant.get('an_cgen', 0)})" if variant.get('ac_cgen') and variant.get('an_cgen') else "",
+                                    style={"fontSize": "14px", "color": "#6c757d"}
+                                )
+                            ])
+                        ], className="mb-3"),
+                        
+                        # gnomAD link
+                        html.Div([
+                            create_gnomad_link(variant['CHROM'], variant['POS'], variant['REF'], variant['ALT'])
+                        ])
+                    ])
+                ], className="detail-section uniform-height")
+            ], width=4)
+        ]),
+            
+        # Comments Section
+        dbc.Row([
+            dbc.Col([
+                html.Div([
+                    html.H6([
+                        html.I(className="fas fa-comments me-2"),
+                        f"Comments ({len(comments_df)})"
+                    ], className="text-primary mb-3"),
+                    
+                    html.Div([
+                        create_comments_display_accordion(comments_df, variant_key, sample_id)
+                    ], className="comments-section")
+                ], className="detail-section")
+            ], width=12)
+        ])
+    ], style={"padding": "20px", "backgroundColor": "rgba(240, 248, 255, 0.8)", "borderRadius": "0 0 12px 12px"})
+
+# Rest of functions remain the same...
 
 def create_database_status_display():
 	"""Create database status display with optimized queries"""
@@ -124,164 +714,6 @@ def create_database_status_display():
 			dbc.Col([dbc.Badge("Parquet DB", color="success", className="ms-2")], width="auto")
 		], align="center", className="g-3")
 	])
-
-def create_beautiful_variant_display(df):
-	"""Create optimized variant table display with performance improvements and gene links - LARGER FONTS"""
-	# Check DataFrame length properly for both Polars and Pandas
-	if isinstance(df, pl.DataFrame):
-		is_empty = len(df) == 0
-		total_count = len(df)
-	else:
-		is_empty = df.empty
-		total_count = len(df)
-	
-	if is_empty:
-		return html.Div([
-			dbc.Alert([
-				html.Div([
-					html.I(className="fas fa-info-circle fa-3x text-info mb-3"),
-					html.H4("No Variants Found", className="text-info mb-3"),
-					html.P([
-						"No variants match your current selection or the database is empty. ",
-						html.Br(),
-						"Please check your filters or ensure your Parquet file contains data."
-					], className="mb-0 text-muted")
-				], className="text-center")
-			], color="info", className="border-0", style={
-				"background": "rgba(13, 202, 240, 0.1)",
-				"borderRadius": "15px",
-				"padding": "40px"
-			})
-		])
-	
-	# Convert to pandas for display if it's Polars
-	if isinstance(df, pl.DataFrame):
-		df_pandas = df.to_pandas()
-	else:
-		df_pandas = df
-	
-	# OPTIMISATION MAJEURE: Limiter strictement à MAX_DISPLAY_VARIANTS
-	display_df = df_pandas.head(MAX_DISPLAY_VARIANTS)
-	showing_count = len(display_df)
-	
-	# Pre-calculate all data to avoid repeated calculations
-	variant_data = []
-	for idx, variant in display_df.iterrows():
-		variant_key = variant.get('variant_key', f"{variant['CHROM']}:{variant['POS']}:{variant['REF']}:{variant['ALT']}")
-		
-		# Pre-format all data
-		position = f"{variant['CHROM']}:{variant['POS']:}"
-		variant_text = f"{variant['REF']}>{variant['ALT']}"
-		vaf_display = format_percentage(variant.get('VAF', 0))
-		
-		# Use max_gnomad_af for display
-		max_gnomad_af = variant.get('max_gnomad_af', variant.get('gnomad_af', 0))
-		max_gnomad_af_display = format_frequency(max_gnomad_af)
-		
-		variant_data.append({
-			'variant_key': variant_key,
-			'position': position,
-			'variant_text': variant_text,
-			'vaf_display': vaf_display,
-			'max_gnomad_af_display': max_gnomad_af_display,
-			'max_gnomad_af': max_gnomad_af,
-			'variant': variant
-		})
-	
-	# Create table rows with optimized rendering - LARGER FONTS
-	table_rows = []
-	
-	for data in variant_data:
-		variant = data['variant']
-		variant_key = data['variant_key']
-		
-		# Create simplified data row with minimal DOM elements - INCREASED FONT SIZES
-		data_row = html.Tr([
-			# Sample ID - INCREASED FONT SIZE
-			html.Td(variant['SAMPLE'], style={"fontSize": "14px", "fontWeight": "600"}),
-			# Position - INCREASED FONT SIZE
-			html.Td(data['position'], style={"fontFamily": "monospace", "fontSize": "14px", "fontWeight": "500"}),
-			# Gene - UPDATED TO USE GENE LINK - INCREASED FONT SIZE
-			html.Td(create_gene_link(variant.get('gene', 'UNKNOWN')), style={"fontSize": "14px"}),
-			# Variant - INCREASED FONT SIZE
-			html.Td(data['variant_text'], style={"fontFamily": "monospace", "fontSize": "14px", "backgroundColor": "#f8f9fa", "borderRadius": "4px", "textAlign": "center", "fontWeight": "500"}),
-			# Genotype - Optimized - INCREASED FONT SIZE
-			html.Td([get_genotype_badge_optimized(variant.get('GT', './.'))]),
-			# VAF - INCREASED FONT SIZE
-			html.Td(data['vaf_display'], style={"fontFamily": "monospace", "fontSize": "13px", "textAlign": "right", "fontWeight": "500"}),
-			# Consequence - Optimized - INCREASED FONT SIZE
-			html.Td([get_consequence_badge_optimized(variant.get('consequence', 'variant'))]),
-			# ClinVar Classification - Optimized - INCREASED FONT SIZE
-			html.Td([get_clinvar_badge_optimized(variant.get('clinvar_sig'))]),
-			# Population Frequency (gnomAD max) - INCREASED FONT SIZE
-			html.Td([
-				html.Span(data['max_gnomad_af_display'], 
-					style={
-						"fontFamily": "monospace", 
-						"fontSize": "13px", 
-						"fontWeight": "bold",
-						"color": "#dc3545" if data['max_gnomad_af'] and data['max_gnomad_af'] < 0.001 
-							else "#ffc107" if data['max_gnomad_af'] and 0.001 <= data['max_gnomad_af'] < 0.01 
-							else "#28a745" if data['max_gnomad_af'] and data['max_gnomad_af'] >= 0.01 
-							else "#6c757d"
-					},
-					title=f"Max gnomAD Population Allele Frequency: {data['max_gnomad_af_display']}"
-				)
-			], style={"textAlign": "right"}),
-			# Comments - INCREASED FONT SIZE
-			html.Td([
-				dbc.Button([html.I(className="fas fa-comments me-1"), str(variant.get('comment_count', 0))], 
-						id={"type": "comment-btn", "variant": variant_key, "sample": variant['SAMPLE']},
-						color="outline-primary", size="sm", n_clicks=0, 
-						style={"fontSize": "12px"})
-			], style={"textAlign": "center"}),
-		], className="variant-row", id={"type": "variant-row", "variant": variant_key, "sample": variant['SAMPLE']}, n_clicks=0)
-		
-		# Accordion collapse row - LAZY LOADING
-		accordion_row = html.Tr([
-			html.Td([
-				dbc.Collapse([
-					html.Div(id={"type": "variant-details-lazy", "variant": variant_key, "sample": variant['SAMPLE']})
-				], 
-				id={"type": "variant-collapse", "variant": variant_key, "sample": variant['SAMPLE']},
-				is_open=False)
-			], colSpan=10, style={"padding": "0", "border": "none"})
-		], style={"border": "none"})
-		
-		table_rows.extend([data_row, accordion_row])
-	
-	# Performance notice
-	performance_notice = []
-	if total_count > MAX_DISPLAY_VARIANTS:
-		performance_notice = [
-			dbc.Alert([
-				html.I(className="fa fa-exclamation-triangle"),
-				f" Performance mode: Showing first {showing_count} of {total_count:,} variants. ",
-				
-			], color="warning", className="mb-3", style={"fontSize": "0.9em"})
-		]
-	
-	# Create table with minimal overhead - LARGER HEADERS
-	return html.Div([
-		*performance_notice,
-		html.Table([
-			html.Thead([
-				html.Tr([
-					html.Th("Sample", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-					html.Th("Position", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-					html.Th("Gene", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-					html.Th("Variant", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-					html.Th("Genotype", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-					html.Th("VAF", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-					html.Th("Consequence", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-					html.Th("ClinVar", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-					html.Th("AF (gnomAD)", className="sortable-header", title="Max Population Allele Frequency from gnomAD", style={"fontSize": "15px", "fontWeight": "700"}),
-					html.Th("Comments", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-				])
-			]),
-			html.Tbody(table_rows)
-		], className="variants-table")
-	], className="variants-table-container")
 
 def create_gene_panel_selector():
 	"""Create the gene panel selector component - SIMPLIFIED (no green gene filter) - HARMONIZED STYLE"""
@@ -544,311 +976,6 @@ def create_update_status_toast():
 		icon="info",
 		style={"position": "fixed", "top": 66, "right": 10, "width": 350, "zIndex": 9999}
 	)
-
-def create_variant_details_accordion(variant):
-	"""Create detailed information panel for accordion expansion with gene links and interactive AA changes"""
-	
-	variant_key = variant.get('variant_key', f"{variant['CHROM']}:{variant['POS']}:{variant['REF']}:{variant['ALT']}")
-	sample_id = variant['SAMPLE']
-	
-	# Get comments for this variant and sample
-	try:
-		comments_df = get_variant_comments(variant_key, sample_id)
-	except Exception as e:
-		logger.error(f"Error retrieving comments: {e}")
-		comments_df = pd.DataFrame()
-	
-	return html.Div([
-		dbc.Row([
-			# Column 1: Variant Information
-			dbc.Col([
-				html.Div([
-					html.H6([
-						html.I(className="fas fa-dna me-2"),
-						"Variant Details"
-					], className="text-primary mb-3"),
-					
-					html.Div([
-						html.Div([
-							html.Strong("Position: "),
-							html.Span(f"{variant['CHROM']}:{variant['POS']:}", style={"fontSize": "14px"})
-						], className="mb-2"),
-
-						html.Div([
-							html.Strong("Consequence: "),
-							get_consequence_badge(variant.get('consequence', 'variant'))
-						], className="mb-2"),
-
-						html.Div([
-							html.Strong("Genotype: "),
-							get_genotype_badge(variant.get('GT', './.'))
-						], className="mb-2"),
-
-						html.Div([
-							html.Strong("AA Change: "),
-							create_aa_change_display(
-								variant.get('aa_change', 'N/A'), 
-								variant_key, 
-								sample_id
-							)
-						], className="mb-2"),
-
-					])
-				], className="detail-section uniform-height")
-			], width=4),
-			
-			# Column 2: Technical Information
-			dbc.Col([
-				html.Div([
-					html.H6([
-						html.I(className="fas fa-microscope me-2"),
-						"Technical Details"
-					], className="text-primary mb-3"),
-					
-					html.Div([
-						html.Div([
-							html.Strong("VAF: "),
-							html.Span(format_percentage(variant.get('VAF', 0)), style={"fontSize": "14px"})
-						], className="mb-2"),
-						
-						html.Div([
-							html.Strong("Depth: "),
-							html.Span(f"{variant.get('DP', 0)}" if pd.notna(variant.get('DP')) else "N/A", style={"fontSize": "14px"})
-						], className="mb-2"),
-						
-						html.Div([
-							html.Strong("Allelic Depth: "),
-							html.Span(variant.get('AD', 'N/A'), style={"fontSize": "14px"})
-						], className="mb-2"),
-
-						html.Div([
-							html.Strong("Quality: "),
-							html.Span(f"{variant.get('QUAL', 0):.1f}" if pd.notna(variant.get('QUAL')) else "N/A", style={"fontSize": "14px"})
-						], className="mb-2"),
-					])
-				], className="detail-section uniform-height")
-			], width=4),
-			
-			# Column 3: Clinical Information
-			dbc.Col([
-				html.Div([
-					html.H6([
-						html.I(className="fas fa-stethoscope me-2"),
-						"Clinical Information"
-					], className="text-primary mb-3"),
-					
-					html.Div([
-						html.Div([
-							html.Strong("ClinVar Significance: "),
-							get_clinvar_badge(variant.get('clinvar_sig'))
-						], className="mb-2"),
-											
-						html.Div([
-							html.Strong("Gene: ", style={"marginRight": "8px"}),
-							create_gene_link(variant.get('gene', 'UNKNOWN'))
-						], className="mb-2", style={"display": "flex", "alignItems": "center", "flexWrap": "wrap"}),
-
-					])
-				], className="detail-section uniform-height")
-			], width=4)
-		]),
-		
-		# Bioinformatics Scores Section
-		dbc.Row([
-			# Column 1: Pathogenicity Prediction
-			dbc.Col([
-				html.Div([
-					html.H6([
-						html.I(className="fas fa-calculator me-2"),
-						"Pathogenicity Prediction"
-					], className="text-primary mb-3"),
-					
-					html.Div([
-						html.Div([
-							html.Strong("CADD Score: "),
-							html.Span(
-								format_score(variant.get('cadd_score', 0)) if variant.get('cadd_score') else "N/A",
-								className="fw-bold",
-								style={"color": "#28a745" if variant.get('cadd_score', 0) and variant.get('cadd_score', 0) < 15 
-									else "#ffc107" if variant.get('cadd_score', 0) and 15 <= variant.get('cadd_score', 0) < 25 
-									else "#dc3545" if variant.get('cadd_score', 0) and variant.get('cadd_score', 0) >= 25 
-									else "#6c757d", "fontSize": "14px"}
-							),
-							html.Br(),
-							html.Small(" (>15 deleterious)", className="text-muted")
-						], className="mb-2"),
-						
-						html.Div([
-							html.Strong("SIFT Score: "),
-							html.Span(
-								format_score(variant.get('sift_score', 0)) if variant.get('sift_score') else "N/A",
-								className="fw-bold",
-								style={"color": "#dc3545" if variant.get('sift_score', 0) and variant.get('sift_score', 0) < 0.05 
-									else "#28a745" if variant.get('sift_score', 0) and variant.get('sift_score', 0) >= 0.05 
-									else "#6c757d", "fontSize": "14px"}
-							),
-							html.Br(),
-							html.Small(" (<0.05 deleterious)", className="text-muted")
-						], className="mb-2"),
-						
-						html.Div([
-							html.Strong("PolyPhen Score: "),
-							html.Span(
-								format_score(variant.get('polyphen_score', 0)) if variant.get('polyphen_score') else "N/A",
-								className="fw-bold",
-								style={"color": "#28a745" if variant.get('polyphen_score', 0) and variant.get('polyphen_score', 0) < 0.15 
-									else "#ffc107" if variant.get('polyphen_score', 0) and 0.15 <= variant.get('polyphen_score', 0) < 0.85 
-									else "#dc3545" if variant.get('polyphen_score', 0) and variant.get('polyphen_score', 0) >= 0.85 
-									else "#6c757d", "fontSize": "14px"}
-							),
-							html.Br(),
-							html.Small(" (>0.85 damaging)", className="text-muted")
-						], className="mb-2")
-					])
-				], className="detail-section uniform-height")
-			], width=4),
-			
-			# Column 2: Splicing & Conservation Scores
-			dbc.Col([
-				html.Div([
-					html.H6([
-						html.I(className="fas fa-dna me-2"),
-						"Splicing & Conservation"
-					], className="text-primary mb-3"),
-					
-					html.Div([
-						html.Div([
-							html.Strong("REVEL Score: "),
-							html.Span(
-								format_score(variant.get('revel_score', 0)) if variant.get('revel_score') else "N/A",
-								className="fw-bold",
-								style={"color": "#28a745" if variant.get('revel_score', 0) and variant.get('revel_score', 0) < 0.3 
-									else "#ffc107" if variant.get('revel_score', 0) and 0.3 <= variant.get('revel_score', 0) < 0.7 
-									else "#dc3545" if variant.get('revel_score', 0) and variant.get('revel_score', 0) >= 0.7 
-									else "#6c757d", "fontSize": "14px"}
-							),
-							html.Br(),
-							html.Small(" (>0.7 pathogenic)", className="text-muted")
-						], className="mb-2"),
-						
-						html.Div([
-							html.Strong("SpliceAI Score: "),
-							html.Span(
-								format_score(variant.get('splice_ai', 0)) if variant.get('splice_ai') else "N/A",
-								className="fw-bold",
-								style={"color": "#28a745" if variant.get('splice_ai', 0) and variant.get('splice_ai', 0) < 0.2 
-									else "#ffc107" if variant.get('splice_ai', 0) and 0.2 <= variant.get('splice_ai', 0) < 0.5 
-									else "#dc3545" if variant.get('splice_ai', 0) and variant.get('splice_ai', 0) >= 0.5 
-									else "#6c757d", "fontSize": "14px"}
-							),
-							html.Br(),
-							html.Small(" (>0.5 splice altering)", className="text-muted")
-						], className="mb-2"),
-						
-						html.Div([
-							html.Strong("pLI Score: "),
-							html.Span(
-								format_score(variant.get('pli_score', 0)) if variant.get('pli_score') else "N/A",
-								className="fw-bold",
-								style={"color": "#28a745" if variant.get('pli_score', 0) and variant.get('pli_score', 0) < 0.1 
-									else "#ffc107" if variant.get('pli_score', 0) and 0.1 <= variant.get('pli_score', 0) < 0.9 
-									else "#dc3545" if variant.get('pli_score', 0) and variant.get('pli_score', 0) >= 0.9 
-									else "#6c757d", "fontSize": "14px"}
-							),
-							html.Br(),
-							html.Small(" (>0.9 intolerant)", className="text-muted")
-						], className="mb-2")
-					])
-				], className="detail-section uniform-height")
-			], width=4),
-			
-			# Column 3: Population & Additional Scores - UPDATED WITH NEW FREQUENCY INFO
-			dbc.Col([
-				html.Div([
-					html.H6([
-						html.I(className="fas fa-globe me-2"),
-						"Population Data"
-					], className="text-primary mb-3"),
-					
-					html.Div([
-						# Display max gnomAD AF
-						html.Div([
-							html.Strong("Allele Frequency gnomAD (max): "),
-							html.Span(
-								format_frequency(variant.get('max_gnomad_af', 0)) if variant.get('max_gnomad_af') else "N/A",
-								className="fw-bold",
-								style={"color": "#dc3545" if variant.get('max_gnomad_af', 0) and variant.get('max_gnomad_af', 0) < 0.001 
-									else "#ffc107" if variant.get('max_gnomad_af', 0) and 0.001 <= variant.get('max_gnomad_af', 0) < 0.01 
-									else "#28a745" if variant.get('max_gnomad_af', 0) and variant.get('max_gnomad_af', 0) >= 0.01 
-									else "#6c757d", "fontSize": "14px"}
-							)
-						], className="mb-2"),
-						
-						# Allele Count gnomAD with homo/hemi counts on separate lines
-						html.Div([
-							html.Strong("Allele Count gnomAD: "),
-							html.Span(
-								f"{variant.get('ac_gnomad', 0)}" if pd.notna(variant.get('ac_gnomad')) else "N/A",
-								style={"fontSize": "14px"}
-							),
-							html.Br(),
-							html.Span([
-								html.Span("             • ", style={"fontSize": "14px"}),
-								html.Strong("NB of homo : "),
-								f"{variant.get('nhomalt_gnomad', 0):.0f}" if pd.notna(variant.get('nhomalt_gnomad')) else "N/A"
-							], style={"fontSize": "14px"}),
-							html.Br(),
-							html.Span([
-								html.Span("             • ", style={"fontSize": "14px"}),
-								html.Strong("NB of hemi : "),
-								f"{variant.get('nhemalt_gnomad', 0):.0f}" if pd.notna(variant.get('nhemalt_gnomad')) else "N/A"
-							], style={"fontSize": "14px"})
-						], className="mb-2"),
-						
-						# AF_CGEN with calculation and color coding (only frequency colored)
-						html.Div([
-							html.Strong("Allele Frequency CGEN: "),
-							html.Span([
-								html.Span(
-									f"{format_frequency(variant.get('af_cgen', 0))}" if variant.get('af_cgen') else "N/A",
-									className="fw-bold",
-									style={"color": "#dc3545" if variant.get('af_cgen', 0) and variant.get('af_cgen', 0) < 0.001 
-										else "#ffc107" if variant.get('af_cgen', 0) and 0.001 <= variant.get('af_cgen', 0) < 0.01 
-										else "#28a745" if variant.get('af_cgen', 0) and variant.get('af_cgen', 0) >= 0.01 
-										else "#6c757d", "fontSize": "14px"}
-								),
-								html.Span(
-									f" ({variant.get('ac_cgen', 0)}/{variant.get('an_cgen', 0)})" if variant.get('ac_cgen') and variant.get('an_cgen') else "",
-									style={"fontSize": "14px", "color": "#6c757d"}
-								)
-							])
-						], className="mb-3"),
-						
-						# gnomAD link
-						html.Div([
-							create_gnomad_link(variant['CHROM'], variant['POS'], variant['REF'], variant['ALT'])
-						])
-					])
-				], className="detail-section uniform-height")
-			], width=4)
-		]),  # Always show bioinformatics scores section
-			
-		# Comments Section
-		dbc.Row([
-			dbc.Col([
-				html.Div([
-					html.H6([
-						html.I(className="fas fa-comments me-2"),
-						f"Comments ({len(comments_df)})"
-					], className="text-primary mb-3"),
-					
-					html.Div([
-						create_comments_display_accordion(comments_df, variant_key, sample_id)
-					], className="comments-section")
-				], className="detail-section")
-			], width=12)
-		])
-	], style={"padding": "20px", "backgroundColor": "rgba(240, 248, 255, 0.8)", "borderRadius": "0 0 12px 12px"})
 
 def create_comments_display_accordion(comments_df, variant_key, sample_id):
 	"""Create comments display section for accordion"""

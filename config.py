@@ -279,16 +279,16 @@ div[class*="-option"] {
 }
 
 .variants-table td {
-    padding: 15px !important;  /* Augmenté de 12px à 15px */
     border-bottom: 1px solid #e9ecef;
-    vertical-align: middle;
     font-size: 14px !important;  /* Augmenté de 12px à 14px */
     line-height: 1.4 !important;  /* Améliore la lisibilité */
+    /* Hauteur et padding gérés par les styles inline Python */
 }
 
 .variant-row {
     cursor: pointer;
     will-change: background-color;
+    /* Hauteur gérée par les styles inline Python */
 }
 
 .variant-row:hover {

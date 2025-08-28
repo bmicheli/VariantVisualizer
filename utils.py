@@ -1,5 +1,8 @@
 """
-Utility functions for Variant Visualizer
+Utility functions for Variant Visualizer - MODIFIED VERSION
+Modifications:
+1. create_gene_link() - Version compacte pour le tableau (premier gène + nombre)
+2. Fonctions d'assistance inchangées
 """
 
 import dash_bootstrap_components as dbc
@@ -342,91 +345,58 @@ def apply_filters(df, search_term=None, genotype_filter=None, chromosome_filter=
                                  active_filters, selected_samples)
 
 def create_gene_link(gene_id_or_name):
-    """Create clickable gene name(s) with OMIM links - IMPROVED with gene name conversion - LARGER FONTS"""
+    """Create clickable gene name with OMIM link - COMPACT VERSION FOR TABLE (only first gene + count)"""
     
     if pd.isna(gene_id_or_name) or gene_id_or_name in [None, '', 'UNKNOWN']:
         return html.Span("UNKNOWN", style={"color": "#6c757d", "fontStyle": "italic", "fontSize": "14px"})
     
     gene_input = str(gene_id_or_name)
     
-    # Handle multiple genes separated by common delimiters
+    # Handle multiple genes - SIMPLIFIED: only show first gene to maintain height
     gene_separators = [' • ', ' · ', ',', ';', '|', '/', '&']
     genes = [gene_input]
     
-    # Split by each separator
+    # Split by each separator and take only the first gene
     for sep in gene_separators:
         if sep in gene_input:
-            genes = [g.strip() for part in genes for g in part.split(sep) if g.strip()]
+            genes = [g.strip() for g in gene_input.split(sep) if g.strip()]
             break
     
-    # DEDUPLICATION: Remove duplicates while preserving order
-    unique_genes = []
-    seen = set()
-    for gene in genes:
-        gene = gene.strip()
-        if gene and gene not in seen:
-            unique_genes.append(gene)
-            seen.add(gene)
+    # Take only the first gene to maintain consistent height
+    gene = genes[0] if genes else gene_input
+    gene_name = get_gene_name_from_id(gene)
     
-    # Convert each gene ID to gene name and create links
-    gene_links = []
-    
-    for i, gene in enumerate(unique_genes):
-        # IMPROVED: Convert ID to name first
-        gene_name = get_gene_name_from_id(gene)
-        
-        if gene_name == 'UNKNOWN' or not gene_name:
-            # If we can't map it, show the original value
-            gene_element = html.Span(
-                gene, 
-                style={
-                    "color": "#6c757d", 
-                    "fontStyle": "italic",
-                    "fontSize": "14px"  # INCREASED FONT SIZE
-                }
-            )
-        else:
-            # Create OMIM search URL using the gene name
-            omim_url = f"https://www.omim.org/search?index=entry&start=1&limit=10&search={gene_name}"
-            
-            gene_element = html.A(
-                gene_name,  # Always display the gene name, not the ID
-                href=omim_url,
-                target="_blank",
-                style={
-                    "fontWeight": "bold", 
-                    "color": "#0097A7", 
-                    "textDecoration": "none",
-                    "fontSize": "14px"  # INCREASED FONT SIZE
-                },
-                title=f"View {gene_name} in OMIM database",
-                className="gene-link"
-            )
-        
-        gene_links.append(gene_element)
-        
-        # Add separator between genes (but not after the last one)
-        if i < len(unique_genes) - 1:
-            gene_links.append(
-                html.Span(" • ", style={
-                    "color": "#6c757d", 
-                    "fontSize": "14px",  # INCREASED FONT SIZE
-                    "margin": "0 2px"
-                })
-            )
-    
-    # Return single element or container with multiple genes
-    if len(gene_links) == 1:
-        return gene_links[0]
-    else:
-        return html.Div(
-            gene_links,
+    if gene_name == 'UNKNOWN' or not gene_name:
+        return html.Span(
+            gene, 
             style={
-                "display": "flex",
-                "flexWrap": "wrap",
-                "alignItems": "center",
-                "gap": "2px"
+                "color": "#6c757d", 
+                "fontStyle": "italic",
+                "fontSize": "14px",
+                "whiteSpace": "nowrap",
+                "overflow": "hidden",
+                "textOverflow": "ellipsis"
             }
+        )
+    else:
+        # Create OMIM search URL using the gene name
+        omim_url = f"https://www.omim.org/search?index=entry&start=1&limit=10&search={gene_name}"
+        
+        return html.A(
+            gene_name + (f" (+{len(genes)-1})" if len(genes) > 1 else ""),  # Show count if multiple
+            href=omim_url,
+            target="_blank",
+            style={
+                "fontWeight": "bold", 
+                "color": "#0097A7", 
+                "textDecoration": "none",
+                "fontSize": "14px",
+                "whiteSpace": "nowrap",
+                "overflow": "hidden",
+                "textOverflow": "ellipsis"
+            },
+            title=f"View {gene_name} in OMIM database" + (f" (and {len(genes)-1} other genes)" if len(genes) > 1 else ""),
+            className="gene-link"
         )
 
 def is_dataframe_empty(df):
