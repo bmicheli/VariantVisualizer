@@ -99,6 +99,7 @@ def create_aa_change_display(aa_change_str, variant_key, sample_id):
         is_open=False)
     ])
 
+
 def create_database_status_display():
 	"""Create database status display with optimized queries"""
 	stats = db.get_database_stats()

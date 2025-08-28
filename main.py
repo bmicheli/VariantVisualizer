@@ -516,7 +516,7 @@ def clear_all_filters_sidebar(n_clicks):
         return "", {}, [0, 1], "filter-sidebar", "sidebar-overlay", False
     return dash.no_update
 
-# Variant row expansion callback
+# Variant row expansion callback - RETOUR À LA VERSION ORIGINALE
 @app.callback(
     Output({"type": "variant-collapse", "variant": MATCH, "sample": MATCH}, "is_open"),
     [Input({"type": "variant-row", "variant": MATCH, "sample": MATCH}, "n_clicks")],
@@ -626,6 +626,33 @@ def clear_comment_field(n_clicks, comment_value):
     if n_clicks and comment_value:
         return ""
     return dash.no_update
+
+# SIMPLE: Callback clientside pour la sélection de texte uniquement
+app.clientside_callback(
+    """
+    function() {
+        setTimeout(() => {
+            // Solution simple : empêcher seulement les événements de sélection de texte 
+            // de déclencher les callbacks d'accordéon
+            document.addEventListener('selectstart', function(e) {
+                e.stopPropagation();
+            });
+            
+            document.addEventListener('mouseup', function(e) {
+                if (window.getSelection && window.getSelection().toString()) {
+                    e.stopPropagation();
+                }
+            });
+            
+        }, 1000);
+        
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("variants-display", "style", allow_duplicate=True),
+    [Input("variants-display", "children")],
+    prevent_initial_call=True
+)
 
 # Force dropdown z-index on page load
 app.clientside_callback(

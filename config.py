@@ -4,6 +4,7 @@ Contains all constants, paths, and configuration settings
 OPTIMIZED VERSION with performance improvements
 UPDATED WITH LARGER FONTS FOR BETTER READABILITY
 FIXED: DROPDOWN BEHAVIOR HARMONIZATION
+FIXED: ACCORDION INTERACTION ISSUES
 """
 
 import os
@@ -122,6 +123,7 @@ EXTERNAL_STYLESHEETS = [
 
 # =============================================================================
 # CSS STYLES - AVEC OPTIMISATIONS DE PERFORMANCE ET POLICES HARMONISÉES
+# FIXED: ACCORDION INTERACTION ISSUES
 # =============================================================================
 
 CUSTOM_CSS = '''
@@ -687,4 +689,80 @@ p {
 .container-fluid {
     padding: 25px !important;
 }
+
+/* FIXED: Styles pour empêcher les interactions indésirables avec l'accordéon */
+.variant-details-content * {
+    user-select: text !important;
+}
+
+.variant-details-content .detail-section {
+    pointer-events: auto !important;
+}
+
+.variant-details-content a, 
+.variant-details-content button, 
+.variant-details-content .btn,
+.variant-details-content .aa-change-toggle {
+    pointer-events: auto !important;
+    user-select: none !important;
+}
+
+/* FIXED: Style spécifique pour les AA change toggles */
+.aa-change-toggle {
+    pointer-events: auto !important;
+    user-select: none !important;
+    display: inline-block !important;
+}
+
+.aa-change-toggle span:last-child {
+    pointer-events: auto !important;
+    user-select: none !important;
+}
+
+/* FIXED: Empêcher les clics sur les détails de fermer l'accordéon parent */
+.variant-details-content {
+    pointer-events: auto !important;
+}
+
+.variant-details-content > * {
+    pointer-events: auto !important;
+}
+
+/* FIXED: Assurer que la sélection de texte fonctionne dans les bonnes zones */
+.detail-section p,
+.detail-section span:not(.aa-change-toggle span),
+.comment-item,
+.variant-details-content .mb-2:not(.aa-change-toggle) {
+    user-select: text !important;
+}
+
+/* FIXED: Éviter la propagation des événements sur les éléments interactifs */
+[data-stop-propagation="true"] {
+    pointer-events: auto !important;
+}
+
+/* FIXED: Style pour les collapse AA changes */
+.aa-change-collapse .card-body {
+    pointer-events: auto !important;
+    user-select: text !important;
+}
+
+/* FIXED: Empêcher la propagation sur les éléments sélectionnables */
+.variant-details-content .detail-section span,
+.variant-details-content .detail-section p,
+.variant-details-content .comment-item {
+    pointer-events: auto !important;
+}
+
+/* FIXED: Style pour éviter les conflits d'événements */
+.variant-row .variants-table td {
+    position: relative;
+}
+
+.variant-details-content {
+    position: relative;
+    z-index: 1;
+}
+
+
 '''
