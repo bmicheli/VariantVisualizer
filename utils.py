@@ -345,32 +345,39 @@ def apply_filters(df, search_term=None, genotype_filter=None, chromosome_filter=
                                  active_filters, selected_samples)
 
 def create_gene_link(gene_id_or_name):
-    """Create clickable gene name with OMIM link - COMPACT VERSION FOR TABLE (only first gene + count)"""
+    """Create clickable gene name with OMIM link - COMPACT VERSION FOR TABLE (only first gene + count, deduplicated)"""
     
     if pd.isna(gene_id_or_name) or gene_id_or_name in [None, '', 'UNKNOWN']:
         return html.Span("UNKNOWN", style={"color": "#6c757d", "fontStyle": "italic", "fontSize": "14px"})
     
     gene_input = str(gene_id_or_name)
     
-    # Handle multiple genes - SIMPLIFIED: only show first gene to maintain height
+    # Handle multiple genes
     gene_separators = [' • ', ' · ', ',', ';', '|', '/', '&']
     genes = [gene_input]
     
-    # Split by each separator and take only the first gene
     for sep in gene_separators:
         if sep in gene_input:
             genes = [g.strip() for g in gene_input.split(sep) if g.strip()]
             break
     
-    # Take only the first gene to maintain consistent height
-    gene = genes[0] if genes else gene_input
+    # Deduplicate while preserving order
+    seen = set()
+    deduped_genes = []
+    for g in genes:
+        if g not in seen:
+            seen.add(g)
+            deduped_genes.append(g)
+    
+    # Take only the first gene
+    gene = deduped_genes[0] if deduped_genes else gene_input
     gene_name = get_gene_name_from_id(gene)
     
     if gene_name == 'UNKNOWN' or not gene_name:
         return html.Span(
-            gene, 
+            gene,
             style={
-                "color": "#6c757d", 
+                "color": "#6c757d",
                 "fontStyle": "italic",
                 "fontSize": "14px",
                 "whiteSpace": "nowrap",
@@ -379,25 +386,24 @@ def create_gene_link(gene_id_or_name):
             }
         )
     else:
-        # Create OMIM search URL using the gene name
         omim_url = f"https://www.omim.org/search?index=entry&start=1&limit=10&search={gene_name}"
-        
         return html.A(
-            gene_name + (f" (+{len(genes)-1})" if len(genes) > 1 else ""),  # Show count if multiple
+            gene_name + (f" (+{len(deduped_genes)-1})" if len(deduped_genes) > 1 else ""),
             href=omim_url,
             target="_blank",
             style={
-                "fontWeight": "bold", 
-                "color": "#0097A7", 
+                "fontWeight": "bold",
+                "color": "#0097A7",
                 "textDecoration": "none",
                 "fontSize": "14px",
                 "whiteSpace": "nowrap",
                 "overflow": "hidden",
                 "textOverflow": "ellipsis"
             },
-            title=f"View {gene_name} in OMIM database" + (f" (and {len(genes)-1} other genes)" if len(genes) > 1 else ""),
+            title=f"View {gene_name} in OMIM database" + (f" (and {len(deduped_genes)-1} other genes)" if len(deduped_genes) > 1 else ""),
             className="gene-link"
         )
+
 
 def is_dataframe_empty(df):
     """Check if DataFrame is empty (works for both Polars and Pandas)"""

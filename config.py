@@ -36,7 +36,7 @@ MAX_DISPLAY_VARIANTS = 20
 
 # OPTIMISATION: Maximum variants to load at once  
 # RÉDUIT de 50000 à 1000 pour améliorer la réactivité
-MAX_LOAD_LIMIT = 5000
+MAX_LOAD_LIMIT = 50000
 
 # Default chunk size for processing
 DEFAULT_CHUNK_SIZE = 10000

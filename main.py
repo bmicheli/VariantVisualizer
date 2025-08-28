@@ -269,133 +269,76 @@ def toggle_sidebar(toggle_clicks, close_clicks, overlay_clicks, apply_clicks, is
     overlay_class = "sidebar-overlay open" if new_state else "sidebar-overlay"
     return sidebar_class, overlay_class, new_state
 
-# UPDATED: Main variants display callback - OPTIMIZED for large gene panels
 @app.callback(
-    [Output("variants-display", "children"), Output("variant-count", "children"), Output("filtered-variants", "data")],
-    [Input("apply-filters-btn", "n_clicks"),  # Primary trigger: apply button
-     Input("sample-selector", "value"),       # Also update when samples change
-     Input("active-filters", "data"),         # Also update when preset filters change
-     Input("panel-genes", "data")],           # Also update when gene panels change
+    [Output("variants-display", "children"), 
+     Output("variant-count", "children"), 
+     Output("filtered-variants", "data")],
+    [Input("apply-filters-btn", "n_clicks"),  
+     Input("sample-selector", "value"),       
+     Input("active-filters", "data"),         
+     Input("panel-genes", "data")],           
     [State("search-input", "value"), 
      State("vaf-range-slider", "value"),
-     State("selected-gene-panels", "data")],     # Get current filter values
+     State("selected-gene-panels", "data")],     
     prevent_initial_call=False
 )
 def update_variants_display_optimized(apply_clicks, selected_samples, active_filters, panel_genes, 
-                                    search_term, vaf_range, selected_panels):
-    """SUPER OPTIMIZED variants display for large gene panels"""
+                                      search_term, vaf_range, selected_panels):
+    """SUPER OPTIMIZED variants display with HGNC_ID-aware filtering (handles multi-ID fields)"""
     
-    # Early return if no samples selected
     if not selected_samples:
         no_selection = create_no_selection_display()
         count_display = create_variant_count_display(0, 0, 0)
         return no_selection, count_display, []
     
     try:
-        # PERFORMANCE: Log start time
         import time
         start_time = time.time()
         
-        # OPTIMISATION 1: Use gene panel filter at database level if possible
-        if panel_genes and len(panel_genes) > 100:  # Only for large panels
-            logger.info(f"PERFORMANCE: Large panel detected ({len(panel_genes)} genes), using optimized filtering")
+        # Charger la DB
+        df = db.load_variants_lazy(samples=selected_samples, limit=MAX_LOAD_LIMIT)
+        if is_dataframe_empty(df):
+            empty_display = create_beautiful_variant_display(df)
+            empty_count = create_variant_count_display(0, 0, len(selected_samples))
+            return empty_display, empty_count, []
+        
+        original_count = len(df)
+        
+        # === FILTRE PANEL DE GENES ===
+        if panel_genes:
+            logger.info(f"Applying gene panel filter with {len(panel_genes)} entries")
+
+            # Charger mapping HGNC_ID → symbol
+            gene_mapping = load_gene_mapping() or {}
+            reverse_mapping = {v.upper(): k for k, v in gene_mapping.items()}  # symbol → ID
+
+            # Construire l’ensemble des HGNC_ID à filtrer
+            panel_ids = set()
+            for gene in panel_genes:
+                g_upper = str(gene).upper()
+                if g_upper in reverse_mapping:
+                    panel_ids.add(reverse_mapping[g_upper])   # symbole → ID
+                else:
+                    panel_ids.add(g_upper)  # déjà HGNC_ID ou inconnu
             
-            # Load variants normally - db is the variants database, not panels
-            df = db.load_variants_lazy(samples=selected_samples, limit=MAX_LOAD_LIMIT)
-            
-            if is_dataframe_empty(df):
-                empty_display = create_beautiful_variant_display(df)
-                empty_count = create_variant_count_display(0, 0, len(selected_samples))
-                return empty_display, empty_count, []
-            
-            original_count = len(df)
-            logger.info(f"PERFORMANCE: Loaded {original_count} variants in {time.time() - start_time:.2f}s")
-            
-            # OPTIMISATION 2: Pre-convert gene panel to set for O(1) lookup - SUPER OPTIMIZED
-            panel_genes_set = set(panel_genes)
-            logger.info(f"PERFORMANCE: Initial gene set created ({len(panel_genes_set)} entries) in {time.time() - start_time:.2f}s")
-            
-            # OPTIMISATION 3: Pre-compute gene mapping ONCE and create reverse lookup
-            gene_mapping = load_gene_mapping()
-            if gene_mapping:
-                mapping_start = time.time()
-                
-                # Create reverse mapping: gene_name -> gene_id (much faster)
-                reverse_mapping = {mapped_name.upper(): gene_id for gene_id, mapped_name in gene_mapping.items()}
-                
-                # Add gene IDs to the set using vectorized lookup
-                for gene_name in panel_genes:
-                    gene_name_upper = gene_name.upper()
-                    if gene_name_upper in reverse_mapping:
-                        panel_genes_set.add(reverse_mapping[gene_name_upper])
-                
-                logger.info(f"PERFORMANCE: Gene mapping applied in {time.time() - mapping_start:.2f}s")
-            
-            logger.info(f"PERFORMANCE: Final gene set prepared ({len(panel_genes_set)} entries) in {time.time() - start_time:.2f}s")
-            
-            # OPTIMISATION 4: Apply gene filter with vectorized operations - SUPER FAST
+            logger.info(f"Filtering variants on {len(panel_ids)} HGNC_IDs")
+
+            # Conversion en Polars si besoin
             if isinstance(df, pd.DataFrame):
                 df = pl.from_pandas(df)
-            
-            # Convert set to list once for Polars filter
-            filter_start = time.time()
-            gene_list = list(panel_genes_set)
-            
-            # Use highly optimized Polars filter
-            df = df.filter(pl.col('gene').is_in(gene_list))
-            logger.info(f"PERFORMANCE: Gene panel filter applied ({len(df)} variants) in {time.time() - filter_start:.2f}s")
-            
-        else:
-            # Standard loading for small panels or no panels
-            df = db.load_variants_lazy(samples=selected_samples, limit=MAX_LOAD_LIMIT)
-            
-            if is_dataframe_empty(df):
-                empty_display = create_beautiful_variant_display(df)
-                empty_count = create_variant_count_display(0, 0, len(selected_samples))
-                return empty_display, empty_count, []
-            
-            original_count = len(df)
-            logger.info(f"Standard loading: {original_count} variants")
-            
-            # Apply gene panel filtering for smaller panels using the original method
-            if panel_genes and selected_panels:
-                logger.info(f"Applying standard gene panel filter with {len(panel_genes)} genes")
-                
-                if isinstance(df, pd.DataFrame):
-                    df = pl.from_pandas(df)
-                
-                # Create conditions for gene filtering
-                gene_conditions = []
-                
-                # Direct gene symbol match
-                gene_conditions.append(pl.col('gene').is_in(panel_genes))
-                
-                # Also try to match gene names after ID conversion (if gene mapping exists)
-                gene_mapping = load_gene_mapping()
-                if gene_mapping:
-                    # Get gene IDs that correspond to our gene names
-                    matching_ids = []
-                    for gene_name in panel_genes:
-                        for gene_id, mapped_name in gene_mapping.items():
-                            if mapped_name.upper() == gene_name.upper():
-                                matching_ids.append(gene_id)
-                    
-                    if matching_ids:
-                        gene_conditions.append(pl.col('gene').is_in(matching_ids))
-                
-                # Apply gene filtering
-                if gene_conditions:
-                    combined_gene_filter = gene_conditions[0]
-                    for condition in gene_conditions[1:]:
-                        combined_gene_filter = combined_gene_filter | condition
-                    
-                    df = df.filter(combined_gene_filter)
-                    logger.info(f"After gene panel filter: {len(df)} variants")
+
+            gene_list = list(panel_ids)
+
+            # Si plusieurs IDs dans la colonne "gene" (ex: "8654,8654"), on split et on check la présence
+            if len(gene_list) == 1:
+                df = df.filter(pl.col("gene").str.split(",").list.contains(gene_list[0]))
+            else:
+                conditions = [pl.col("gene").str.split(",").list.contains(g) for g in gene_list]
+                df = df.filter(pl.any_horizontal(conditions))
+
+            logger.info(f"After gene panel filter: {len(df)} variants (from {original_count})")
         
-        # OPTIMISATION 4: Apply remaining filters efficiently
-        filter_start = time.time()
-        
-        # Apply basic filters (optimized)
+        # === AUTRES FILTRES ===
         df = apply_filters_optimized(
             df, 
             search_term=search_term,
@@ -405,24 +348,16 @@ def update_variants_display_optimized(apply_clicks, selected_samples, active_fil
             selected_samples=selected_samples
         )
         
-        logger.info(f"PERFORMANCE: Basic filters applied in {time.time() - filter_start:.2f}s ({len(df)} variants)")
-        
-        # Apply VAF filter
-        if isinstance(df, pd.DataFrame):
-            df = pl.from_pandas(df)
-        
+        # Filtre VAF
         if vaf_range and len(vaf_range) == 2:
             before_vaf = len(df)
             df = df.filter((pl.col('VAF') >= vaf_range[0]) & (pl.col('VAF') <= vaf_range[1]))
-            logger.info(f"VAF filter ({vaf_range}): {before_vaf} -> {len(df)}")
+            logger.info(f"VAF filter {vaf_range}: {before_vaf} -> {len(df)}")
         
-        total_time = time.time() - start_time
-        logger.info(f"PERFORMANCE: Total filtering time: {total_time:.2f}s for {len(df)} final variants")
-        
+        # === AFFICHAGE & STOCKAGE ===
         display = create_beautiful_variant_display(df)
         count_display = create_variant_count_display(len(df), original_count, len(selected_samples))
         
-        # OPTIMISATION 5: Store only first MAX_DISPLAY_VARIANTS for details
         try:
             if isinstance(df, pl.DataFrame):
                 storage_data = df.head(MAX_DISPLAY_VARIANTS).to_pandas().to_dict('records')
@@ -433,7 +368,7 @@ def update_variants_display_optimized(apply_clicks, selected_samples, active_fil
             storage_data = []
         
         return display, count_display, storage_data
-        
+    
     except Exception as e:
         logger.error(f"Error in update_variants_display: {e}")
         error_display = create_error_component(f"Error loading variants: {str(e)}")
@@ -825,4 +760,4 @@ def run_app():
         print(f"❌ Error starting app: {e}")
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=False)
