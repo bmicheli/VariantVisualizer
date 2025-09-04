@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # OPTIMISATION MAJEURE: Maximum variants to display for performance
-# CHANGÉ DE 1000 À 20 pour un rendu ultra-rapide
-MAX_DISPLAY_VARIANTS = 20
+# CHANGÉ DE 1000 À 30 pour un rendu ultra-rapide
+MAX_DISPLAY_VARIANTS = 30
 
 # OPTIMISATION: Maximum variants to load at once  
 # RÉDUIT de 50000 à 1000 pour améliorer la réactivité

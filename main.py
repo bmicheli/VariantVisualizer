@@ -289,7 +289,7 @@ def toggle_sidebar(toggle_clicks, close_clicks, overlay_clicks, apply_clicks, is
     overlay_class = "sidebar-overlay open" if new_state else "sidebar-overlay"
     return sidebar_class, overlay_class, new_state
 
-# Callback principal avec tri intégré
+# Callback principal avec tri intégré - FIXED GENE SORTING
 @app.callback(
     [Output("variants-display", "children"), 
      Output("variant-count", "children"), 
@@ -306,7 +306,7 @@ def toggle_sidebar(toggle_clicks, close_clicks, overlay_clicks, apply_clicks, is
 )
 def update_variants_display_optimized(apply_clicks, selected_samples, active_filters, panel_genes, 
                                       sort_state, search_term, vaf_range, selected_panels):
-    """SUPER OPTIMIZED variants display with HGNC_ID-aware filtering and SORTING"""
+    """SUPER OPTIMIZED variants display with HGNC_ID-aware filtering and SORTING - FIXED GENE SORTING"""
     
     if not selected_samples:
         no_selection = create_no_selection_display()
@@ -376,7 +376,7 @@ def update_variants_display_optimized(apply_clicks, selected_samples, active_fil
             df = df.filter((pl.col('VAF') >= vaf_range[0]) & (pl.col('VAF') <= vaf_range[1]))
             logger.info(f"VAF filter {vaf_range}: {before_vaf} -> {len(df)}")
         
-        # === TRI DES DONNÉES ===
+        # === TRI DES DONNÉES - FIXED GENE SORTING ===
         if sort_state and sort_state.get('column'):
             sort_column = sort_state['column']
             sort_direction = sort_state['direction']
@@ -403,7 +403,46 @@ def update_variants_display_optimized(apply_clicks, selected_samples, active_fil
                     df = df.sort(['chrom_numeric', 'POS'], descending=[not ascending, not ascending])
                     df = df.drop('chrom_numeric')
                 elif sort_column == "gene":
-                    df = df.sort("gene", descending=not ascending)
+                    # FIXED: Tri alphabétique par symbole de gène au lieu du HGNC ID
+                    logger.info("Applying alphabetical gene symbol sorting")
+                    
+                    # Charger le mapping HGNC ID → symbole
+                    gene_mapping = load_gene_mapping() or {}
+                    
+                    # Créer une colonne temporaire avec les symboles de gènes pour le tri
+                    def convert_gene_ids_to_symbols(gene_str):
+                        """Convert gene IDs to symbols for sorting"""
+                        if pd.isna(gene_str) or gene_str in [None, '', 'UNKNOWN']:
+                            return 'UNKNOWN'
+                        
+                        # Handle multiple genes separated by commas
+                        genes = [g.strip() for g in str(gene_str).split(',') if g.strip()]
+                        if not genes:
+                            return 'UNKNOWN'
+                        
+                        # Convert each gene ID to symbol and take the first one for sorting
+                        symbols = []
+                        for gene in genes:
+                            if gene in gene_mapping:
+                                symbols.append(gene_mapping[gene])
+                            else:
+                                symbols.append(gene)  # Keep original if not found
+                        
+                        # Return first symbol for sorting (alphabetically)
+                        return symbols[0] if symbols else 'UNKNOWN'
+                    
+                    # Apply the conversion to create a temporary sorting column
+                    df = df.with_columns([
+                        pl.col('gene').map_elements(convert_gene_ids_to_symbols, return_dtype=pl.Utf8).alias('gene_symbol_for_sort')
+                    ])
+                    
+                    # Sort by the gene symbol column
+                    df = df.sort("gene_symbol_for_sort", descending=not ascending)
+                    
+                    # Remove the temporary column
+                    df = df.drop('gene_symbol_for_sort')
+                    
+                    logger.info(f"Applied alphabetical gene sorting: {sort_direction}")
                 elif sort_column == "genotype":
                     df = df.sort("GT", descending=not ascending)
                 elif sort_column == "moi":
