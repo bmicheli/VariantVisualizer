@@ -5,6 +5,7 @@ OPTIMIZED VERSION with performance improvements
 UPDATED WITH LARGER FONTS FOR BETTER READABILITY
 FIXED: DROPDOWN BEHAVIOR HARMONIZATION
 FIXED: ACCORDION INTERACTION ISSUES
+ADDED: SORTABLE HEADERS STYLING
 """
 
 import os
@@ -141,6 +142,7 @@ EXTERNAL_STYLESHEETS = [
 # =============================================================================
 # CSS STYLES - AVEC OPTIMISATIONS DE PERFORMANCE ET POLICES HARMONISÉES
 # FIXED: ACCORDION INTERACTION ISSUES
+# ADDED: SORTABLE HEADERS STYLING
 # =============================================================================
 
 CUSTOM_CSS = '''
@@ -285,14 +287,35 @@ div[class*="-option"] {
     z-index: 10;
 }
 
+/* NOUVEAU: Styling pour les headers triables */
 .sortable-header {
-    transition: background-color 0.2s ease;
+    transition: all 0.2s ease;
     cursor: pointer;
     user-select: none;
+    position: relative;
 }
 
 .sortable-header:hover {
     background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%) !important;
+    transform: translateY(-1px);
+}
+
+.sortable-header:active {
+    transform: translateY(0);
+}
+
+.sortable-header i {
+    transition: all 0.2s ease;
+}
+
+.sortable-header:hover i {
+    color: #0097A7 !important;
+}
+
+/* Style spécial pour les icônes de tri actives */
+.sortable-header .fa-sort-up,
+.sortable-header .fa-sort-down {
+    color: #0097A7 !important;
 }
 
 .variants-table td {
@@ -780,6 +803,4 @@ p {
     position: relative;
     z-index: 1;
 }
-
-
 '''

@@ -4,6 +4,7 @@ Modifications:
 1. Hauteur fixe des lignes du tableau (48px)
 2. Affichage compact des gènes dans le tableau (premier + nombre)
 3. Affichage complet des gènes dans l'accordéon Clinical Information
+4. NOUVEAU : Headers cliquables pour le tri des colonnes
 """
 
 import dash_bootstrap_components as dbc
@@ -226,8 +227,17 @@ def create_aa_change_display(aa_change_str, variant_key, sample_id):
         is_open=False)
     ])
 
-def create_beautiful_variant_display(df):
-    """Create optimized variant table display with FIXED ROW HEIGHT"""
+def get_sort_icon(column, current_sort_column, current_sort_direction):
+    """Return sort icon based on current sort state"""
+    if column != current_sort_column:
+        return html.I(className="fas fa-sort text-muted", style={"fontSize": "12px", "marginLeft": "5px"})
+    elif current_sort_direction == "asc":
+        return html.I(className="fas fa-sort-up text-primary", style={"fontSize": "12px", "marginLeft": "5px"})
+    else:
+        return html.I(className="fas fa-sort-down text-primary", style={"fontSize": "12px", "marginLeft": "5px"})
+
+def create_beautiful_variant_display(df, sort_column=None, sort_direction="asc"):
+    """Create optimized variant table display with FIXED ROW HEIGHT and SORTING"""
     # Check DataFrame length properly for both Polars and Pandas
     if isinstance(df, pl.DataFrame):
         is_empty = len(df) == 0
@@ -288,6 +298,42 @@ def create_beautiful_variant_display(df):
             'max_gnomad_af': max_gnomad_af,
             'variant': variant
         })
+    
+    # Create sortable table headers with sort icons
+    headers = [
+        {"key": "sample", "label": "Sample", "sortable": True},
+        {"key": "position", "label": "Position", "sortable": True},
+        {"key": "gene", "label": "Gene", "sortable": True},
+        {"key": "variant", "label": "Variant", "sortable": False},
+        {"key": "genotype", "label": "Genotype", "sortable": True},
+        {"key": "moi", "label": "MoI", "sortable": True},
+        {"key": "vaf", "label": "VAF", "sortable": True},
+        {"key": "consequence", "label": "Consequence", "sortable": True},
+        {"key": "clinvar", "label": "ClinVar", "sortable": True},
+        {"key": "gnomad_af", "label": "AF (gnomAD)", "sortable": True},
+        {"key": "comments", "label": "Comments", "sortable": False},
+    ]
+    
+    header_row = []
+    for header in headers:
+        if header["sortable"]:
+            header_content = [
+                header["label"],
+                get_sort_icon(header["key"], sort_column, sort_direction)
+            ]
+            header_cell = html.Th(
+                header_content,
+                id={"type": "sort-header", "column": header["key"]},
+                className="sortable-header",
+                style={"fontSize": "15px", "fontWeight": "700", "cursor": "pointer"},
+                title=f"Sort by {header['label']}"
+            )
+        else:
+            header_cell = html.Th(
+                header["label"],
+                style={"fontSize": "15px", "fontWeight": "700"}
+            )
+        header_row.append(header_cell)
     
     # Create table rows with FIXED HEIGHT - MODIFIED VERSION
     table_rows = []
@@ -382,7 +428,7 @@ def create_beautiful_variant_display(df):
                 ], 
                 id={"type": "variant-collapse", "variant": variant_key, "sample": variant['SAMPLE']},
                 is_open=False)
-            ], colSpan=10, style={"padding": "0", "border": "none"})
+            ], colSpan=11, style={"padding": "0", "border": "none"})
         ], style={"border": "none"})
         
         table_rows.extend([data_row, accordion_row])
@@ -403,19 +449,7 @@ def create_beautiful_variant_display(df):
         *performance_notice,
         html.Table([
             html.Thead([
-                html.Tr([
-                    html.Th("Sample", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-                    html.Th("Position", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-                    html.Th("Gene", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-                    html.Th("Variant", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-                    html.Th("Genotype", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-					html.Th("MoI", className="sortable-header", title="Mode of Inheritance", style={"fontSize": "15px", "fontWeight": "700"}),  # NOUVEAU
-                    html.Th("VAF", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-                    html.Th("Consequence", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-                    html.Th("ClinVar", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-                    html.Th("AF (gnomAD)", className="sortable-header", title="Max Population Allele Frequency from gnomAD", style={"fontSize": "15px", "fontWeight": "700"}),
-                    html.Th("Comments", className="sortable-header", style={"fontSize": "15px", "fontWeight": "700"}),
-                ])
+                html.Tr(header_row)
             ]),
             html.Tbody(table_rows)
         ], className="variants-table")

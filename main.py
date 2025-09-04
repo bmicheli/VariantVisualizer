@@ -1,23 +1,15 @@
-"""
-Main application file for Variant Visualizer
-"""
-
 import dash
 import dash_bootstrap_components as dbc
 from dash import html, dcc, Output, Input, State, callback_context, ALL, MATCH
 import pandas as pd
 import json
 from datetime import datetime
-
 # Import local modules
 from config import *
 from database import *
 from utils import *
 from components import *
-from gene_panels import (
-    init_gene_panels, update_panels_if_needed, get_available_panels, 
-    get_genes_for_panels, get_panel_info, force_update_panels
-)
+from gene_panels import (init_gene_panels, update_panels_if_needed, get_available_panels,get_genes_for_panels, get_panel_info, force_update_panels)
 
 # =============================================================================
 # APP INITIALIZATION
@@ -112,7 +104,8 @@ app.layout = html.Div([
     dcc.Store(id="sidebar-open", data=False),
     dcc.Store(id="available-samples", data=[]),
     dcc.Store(id="selected-gene-panels", data=[]),
-    dcc.Store(id="panel-genes", data=[])
+    dcc.Store(id="panel-genes", data=[]),
+    dcc.Store(id="sort-state", data={"column": None, "direction": "asc"})  # NOUVEAU: Store pour le tri
     
 ], style={"minHeight": "100vh", "background": "linear-gradient(135deg, #00BCD4 0%, #4DD0E1 50%, #80E5A3 100%)"})
 
@@ -140,7 +133,7 @@ def update_gene_panel_options(panel_selector_id, update_clicks):
     """Update gene panel selector options"""
     return get_available_panels()
 
-# SIMPLIFIED: Gene panel selection callback (removed green gene filtering)
+# Gene panel selection callback 
 @app.callback(
     [Output("selected-gene-panels", "data"), 
      Output("panel-genes", "data")],
@@ -169,6 +162,33 @@ def handle_gene_panel_selection(selected_panels, clear_clicks, current_panels):
         genes = []
     
     return selected_panels or [], genes
+
+# Callback pour la gestion du tri des colonnes
+@app.callback(
+    Output("sort-state", "data"),
+    [Input({"type": "sort-header", "column": ALL}, "n_clicks")],
+    [State("sort-state", "data")],
+    prevent_initial_call=True
+)
+def handle_column_sort(n_clicks_list, current_sort):
+    """Handle column sorting when headers are clicked"""
+    ctx = callback_context
+    if not ctx.triggered or not any(n_clicks_list):
+        return current_sort
+    
+    # Get the triggered button ID
+    trigger_id = json.loads(ctx.triggered[0]['prop_id'].split('.')[0])
+    clicked_column = trigger_id['column']
+    
+    # Determine new sort direction
+    if current_sort['column'] == clicked_column:
+        # Same column clicked - toggle direction
+        new_direction = "desc" if current_sort['direction'] == "asc" else "asc"
+    else:
+        # Different column clicked - default to ascending
+        new_direction = "asc"
+    
+    return {"column": clicked_column, "direction": new_direction}
 
 # Panel info modal callback
 @app.callback(
@@ -247,7 +267,7 @@ def handle_clear_gene_panels(clear_clicks):
     [Input("more-filters-btn", "n_clicks"), 
      Input("close-sidebar-btn", "n_clicks"), 
      Input("sidebar-overlay", "n_clicks"),
-     Input("apply-filters-btn", "n_clicks")],  # Add apply button as trigger
+     Input("apply-filters-btn", "n_clicks")],
     [State("sidebar-open", "data")],
     prevent_initial_call=True
 )
@@ -269,6 +289,7 @@ def toggle_sidebar(toggle_clicks, close_clicks, overlay_clicks, apply_clicks, is
     overlay_class = "sidebar-overlay open" if new_state else "sidebar-overlay"
     return sidebar_class, overlay_class, new_state
 
+# Callback principal avec tri intégré
 @app.callback(
     [Output("variants-display", "children"), 
      Output("variant-count", "children"), 
@@ -276,15 +297,16 @@ def toggle_sidebar(toggle_clicks, close_clicks, overlay_clicks, apply_clicks, is
     [Input("apply-filters-btn", "n_clicks"),  
      Input("sample-selector", "value"),       
      Input("active-filters", "data"),         
-     Input("panel-genes", "data")],           
+     Input("panel-genes", "data"),
+     Input("sort-state", "data")],
     [State("search-input", "value"), 
      State("vaf-range-slider", "value"),
      State("selected-gene-panels", "data")],     
     prevent_initial_call=False
 )
 def update_variants_display_optimized(apply_clicks, selected_samples, active_filters, panel_genes, 
-                                      search_term, vaf_range, selected_panels):
-    """SUPER OPTIMIZED variants display with HGNC_ID-aware filtering (handles multi-ID fields)"""
+                                      sort_state, search_term, vaf_range, selected_panels):
+    """SUPER OPTIMIZED variants display with HGNC_ID-aware filtering and SORTING"""
     
     if not selected_samples:
         no_selection = create_no_selection_display()
@@ -312,7 +334,7 @@ def update_variants_display_optimized(apply_clicks, selected_samples, active_fil
             gene_mapping = load_gene_mapping() or {}
             reverse_mapping = {v.upper(): k for k, v in gene_mapping.items()}  # symbol → ID
 
-            # Construire l’ensemble des HGNC_ID à filtrer
+            # Construire l'ensemble des HGNC_ID à filtrer
             panel_ids = set()
             for gene in panel_genes:
                 g_upper = str(gene).upper()
@@ -354,8 +376,61 @@ def update_variants_display_optimized(apply_clicks, selected_samples, active_fil
             df = df.filter((pl.col('VAF') >= vaf_range[0]) & (pl.col('VAF') <= vaf_range[1]))
             logger.info(f"VAF filter {vaf_range}: {before_vaf} -> {len(df)}")
         
+        # === TRI DES DONNÉES ===
+        if sort_state and sort_state.get('column'):
+            sort_column = sort_state['column']
+            sort_direction = sort_state['direction']
+            
+            # Conversion en Polars si nécessaire
+            if isinstance(df, pd.DataFrame):
+                df = pl.from_pandas(df)
+            
+            # Appliquer le tri selon la colonne
+            ascending = sort_direction == "asc"
+            
+            try:
+                if sort_column == "sample":
+                    df = df.sort("SAMPLE", descending=not ascending)
+                elif sort_column == "position":
+                    # Tri spécial pour position (chromosome puis position)
+                    df = df.with_columns([
+                        pl.when(pl.col('CHROM') == 'X').then(23)
+                        .when(pl.col('CHROM') == 'Y').then(24)
+                        .when(pl.col('CHROM') == 'MT').then(25)
+                        .otherwise(pl.col('CHROM').cast(pl.Int32, strict=False))
+                        .alias('chrom_numeric')
+                    ])
+                    df = df.sort(['chrom_numeric', 'POS'], descending=[not ascending, not ascending])
+                    df = df.drop('chrom_numeric')
+                elif sort_column == "gene":
+                    df = df.sort("gene", descending=not ascending)
+                elif sort_column == "genotype":
+                    df = df.sort("GT", descending=not ascending)
+                elif sort_column == "moi":
+                    df = df.sort("moi", descending=not ascending)
+                elif sort_column == "vaf":
+                    df = df.sort("VAF", descending=not ascending)
+                elif sort_column == "consequence":
+                    df = df.sort("consequence", descending=not ascending)
+                elif sort_column == "clinvar":
+                    df = df.sort("clinvar_sig", descending=not ascending)
+                elif sort_column == "gnomad_af":
+                    # Tri par max_gnomad_af si disponible, sinon gnomad_af
+                    if 'max_gnomad_af' in df.columns:
+                        df = df.sort("max_gnomad_af", descending=not ascending)
+                    else:
+                        df = df.sort("gnomad_af", descending=not ascending)
+                
+                logger.info(f"Applied sort: {sort_column} {sort_direction}")
+            except Exception as e:
+                logger.error(f"Error applying sort: {e}")
+        
         # === AFFICHAGE & STOCKAGE ===
-        display = create_beautiful_variant_display(df)
+        display = create_beautiful_variant_display(
+            df, 
+            sort_column=sort_state.get('column') if sort_state else None,
+            sort_direction=sort_state.get('direction') if sort_state else "asc"
+        )
         count_display = create_variant_count_display(len(df), original_count, len(selected_samples))
         
         try:
@@ -424,14 +499,15 @@ def toggle_aa_change_details(n_clicks, is_open):
 @app.callback(
     [Output("search-input", "value", allow_duplicate=True), 
      Output("active-filters", "data", allow_duplicate=True),
-     Output("vaf-range-slider", "value", allow_duplicate=True)],
+     Output("vaf-range-slider", "value", allow_duplicate=True),
+     Output("sort-state", "data", allow_duplicate=True)],  # NOUVEAU: Reset du tri
     [Input("reset-all-btn", "n_clicks")],
     prevent_initial_call=True
 )
 def reset_all_filters(n_clicks):
     """Reset all filters from the main panel reset button"""
     if n_clicks:
-        return "", {}, [0, 1]
+        return "", {}, [0, 1], {"column": None, "direction": "asc"}
     return dash.no_update
 
 # Updated Clear filters callback to include apply functionality
@@ -441,14 +517,15 @@ def reset_all_filters(n_clicks):
      Output("vaf-range-slider", "value", allow_duplicate=True),
      Output("filter-sidebar", "className", allow_duplicate=True), 
      Output("sidebar-overlay", "className", allow_duplicate=True), 
-     Output("sidebar-open", "data", allow_duplicate=True)],
+     Output("sidebar-open", "data", allow_duplicate=True),
+     Output("sort-state", "data", allow_duplicate=True)],  # NOUVEAU: Reset du tri
     [Input("clear-filters", "n_clicks")],
     prevent_initial_call=True
 )
 def clear_all_filters_sidebar(n_clicks):
     """Clear filters from sidebar clear button and close sidebar"""
     if n_clicks:
-        return "", {}, [0, 1], "filter-sidebar", "sidebar-overlay", False
+        return "", {}, [0, 1], "filter-sidebar", "sidebar-overlay", False, {"column": None, "direction": "asc"}
     return dash.no_update
 
 # Variant row expansion callback - RETOUR À LA VERSION ORIGINALE
@@ -747,14 +824,14 @@ def run_app():
     """Run the Dash application"""
     try:
         print("🚀 Starting Variant Visualizer with Gene Panel Support...")
-        print("🔗 Access the app at: http://127.0.0.1:8050")
+        print("🔗 Access the app at: http://127.0.0.1:8051")
         print("📊 Database status:", "Ready" if os.path.exists(VARIANTS_PARQUET_PATH) else "No data file")
         print("🧬 Gene panels:", "Loaded" if get_available_panels() else "Empty")
         
         app.run_server(
             debug=True, 
             host='127.0.0.1', 
-            port=8050,
+            port=8051,
             dev_tools_hot_reload=True,
             dev_tools_ui=True
         )
@@ -763,5 +840,6 @@ def run_app():
         logger.error(f"Failed to start application: {e}")
         print(f"❌ Error starting app: {e}")
 
-if __name__ == "__main__":
-    app.run(debug=False)
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 8051))
+    app.run(host="0.0.0.0", port=port, debug=False)

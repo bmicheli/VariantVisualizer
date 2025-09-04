@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 class VCFToParquetConverter:
-	def __init__(self, output_dir: str = "data", chunk_size: int = 50000):
+	def __init__(self, output_dir: str = "data", chunk_size: int = 10000):
 		self.output_dir = Path(output_dir)
 		self.chunk_size = chunk_size
 		self.output_dir.mkdir(exist_ok=True)
@@ -630,7 +630,7 @@ class VCFToParquetConverter:
 				output_file,
 				compression="snappy",
 				use_pyarrow=True,
-				row_group_size=50000,
+				row_group_size=10000,
 				statistics=True,
 			)
 		except (ModuleNotFoundError, ImportError) as e:
